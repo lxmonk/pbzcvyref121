@@ -7,3 +7,4 @@ hw1/*
 *.ps
 TAGS
 hw2/tests
+/hw2/.#compiler.sml

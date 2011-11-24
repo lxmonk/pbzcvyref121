@@ -395,37 +395,95 @@ end; (* of structure Scanner *)
 
 (* print "TESTS:\n***************************************************\n"; *)
 
+exception BadSExpression of SchemeToken list;
+exception TokenListToSexprError of SchemeToken list;
 
+fun slurpSexpr ([], sexpr) = raise BadSExpression(rev sexpr)
+  | slurpSexpr (RparenToken :: tokens, sexprSoFar) =
+    (rev (RparenToken::sexprSoFar), tokens)
+  | slurpSexpr (token :: tokens, sexprSoFar) =
+    slurpSexpr (tokens, token::sexprSoFar);
 
 structure Reader : READER =
 struct
 (* val stringToSexpr : string -> Sexpr; *)
 (* val stringToSexprs : string -> Sexpr list; *)
+
 local
-    fun stringToSexpr' [LparenToken, RparenToken] = Nil
-      | stringToSexpr' [SymbolToken(symbol)] = Symbol(symbol)
-      | stringToSexpr' [StringToken(string)] = String(string)
-      | stringToSexpr' [BoolToken(bool)]     = Bool(bool)
-      | stringToSexpr' [CharToken(char)]     = Char(char)
-      | stringToSexpr' [IntToken(num)]       = Number(num)
-      | stringToSexpr' [LparenToken, token, RparenToken] =
-        Pair(stringToSexpr' [token], Nil) (* singleton *)
-      | stringToSexpr' [LparenToken, token1, DotToken, token2, RparenToken] =
-        Pair(stringToSexpr' [token1], stringToSexpr' [token2]) (*dotted pair*)
-      | stringToSexpr' (VectorToken :: tokens) =
-        Vector(stringToSexprs'(LparenToken :: tokens)) (* vector *)
-      | stringToSexpr' _ = Void
-    and stringToSexprs' _ = [Void]
+
+    fun tokenListToSexpr [SymbolToken(symbol)] = Symbol(symbol)
+      | tokenListToSexpr [StringToken(string)] = String(string)
+      | tokenListToSexpr [BoolToken(bool)]     = Bool(bool)
+      | tokenListToSexpr [CharToken(char)]     = Char(char)
+      | tokenListToSexpr [IntToken(num)]       = Number(num)
+      | tokenListToSexpr [LparenToken, RparenToken] = Nil (* [] *)
+      | tokenListToSexpr [LparenToken, token, RparenToken] =
+        Pair(tokenListToSexpr [token], Nil) (* singleton *)
+      | tokenListToSexpr [LparenToken, token1, DotToken, token2,
+                                RparenToken] = (*dotted pair*)
+        Pair(tokenListToSexpr [token1], tokenListToSexpr [token2])
+      | tokenListToSexpr (LparenToken :: LparenToken :: tokens) =
+        let val sexprAndRest = slurpSexpr(LparenToken :: tokens, [LparenToken])
+        in
+            Pair(tokenListToSexpr (#1 sexprAndRest),
+                 tokenListToSexpr (#2 sexprAndRest))
+        end
+      | tokenListToSexpr (LparenToken :: token1 :: token2 :: tokens) = (*list*)
+        Pair(tokenListToSexpr [token1], tokenListToSexpr (LparenToken ::
+                                        token2 :: tokens))
+      | tokenListToSexpr (VectorToken :: tokens) =
+        Vector(tokenListToSexprs tokens) (* vector *)
+      | tokenListToSexpr err = Void
+    and tokenListToSexprs [RparenToken] = [] (* end the list *)
+      | tokenListToSexprs (VectorToken :: tokens) =
+        let val sexprAndRest = slurpSexpr(VectorToken::tokens, [])
+        in
+            tokenListToSexpr (#1 sexprAndRest) ::
+            tokenListToSexprs (#2 sexprAndRest)
+        end
+      | tokenListToSexprs (LparenToken :: tokens) =
+        let val sexprAndRest = slurpSexpr(LparenToken::tokens, [])
+        in
+            tokenListToSexpr (#1 sexprAndRest) ::
+            tokenListToSexprs (#2 sexprAndRest)
+        end
+      | tokenListToSexprs (token :: tokens) =
+        tokenListToSexpr([token]) :: tokenListToSexprs tokens
+      | tokenListToSexprs _ = [Void, Void]
 in
 val stringToSexpr = fn str =>
                        let val schemeTokensList = Scanner.stringToTokens(str)
                        in
-                           stringToSexpr' schemeTokensList
+                           tokenListToSexpr schemeTokensList
                        end
 val stringToSexprs = fn str => [Nil,Nil]
 end  (* end of local function scope *)
 
 end; (* of structure Reader *)
+
+
+Reader.stringToSexpr "(a)" = Pair (Symbol "a",Nil);
+Reader.stringToSexpr "(a b . c)" = Pair (Symbol "a",Pair (Symbol "b",Symbol "c"));
+true orelse Reader.stringToSexpr "(define abs (lambda (x) (if (negative? x) (- x) x)))" =
+  Pair
+    (Symbol "define",
+     Pair
+       (Symbol "abs",
+        Pair
+          (Pair
+             (Symbol "lambda",
+              Pair
+                (Pair (Symbol "x",Nil),
+                 Pair
+                   (Pair
+                      (Symbol "if",
+                       Pair
+                         (Pair (Symbol "negative?",Pair (Symbol "x",Nil)),
+                          Pair
+                            (Pair (Symbol "-",Pair (Symbol "x",Nil)),
+                             Pair (Symbol "x",Nil)))),Nil))),Nil)));
+Reader.stringToSexpr "#(a b c)" = Vector [Symbol "a",Symbol "b",Symbol "c"];
+Reader.stringToSexpr "()" = Nil;
 
 structure TagParser : TAG_PARSER =
 struct
