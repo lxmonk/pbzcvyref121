@@ -403,23 +403,19 @@ struct
 (* val stringToSexprs : string -> Sexpr list; *)
 local
     fun stringToSexpr' [LparenToken, RparenToken] = Nil
-      (* | stringToSexpr' (LparenToken :: nextToken :: tokens) = *)
-      (*   Pair(stringToSexpr'([nextToken]), stringToSexpr'(tokens)) *)
       | stringToSexpr' [SymbolToken(symbol)] = Symbol(symbol)
       | stringToSexpr' [StringToken(string)] = String(string)
       | stringToSexpr' [BoolToken(bool)]     = Bool(bool)
       | stringToSexpr' [CharToken(char)]     = Char(char)
       | stringToSexpr' [IntToken(num)]       = Number(num)
+      | stringToSexpr' [LparenToken, token, RparenToken] =
+        Pair(stringToSexpr' [token], Nil) (* singleton *)
       | stringToSexpr' [LparenToken, token1, DotToken, token2, RparenToken] =
-        Pair(stringToSexpr' [token1], stringToSexpr' [token2])
-      (* | stringToSexpr' [RparenToken] = Nil *)
+        Pair(stringToSexpr' [token1], stringToSexpr' [token2]) (*dotted pair*)
+      | stringToSexpr' (VectorToken :: tokens) =
+        Vector(stringToSexprs'(LparenToken :: tokens)) (* vector *)
       | stringToSexpr' _ = Void
-(* | stringToSexpr' (RparenToken :: tokens) = Nil *)
-(* | stringToSexpr' [SymbolToken(symbol), RparenToken] *)
-(*   = Nil *)
-(* | stringToSexpr' (SymbolToken(symbol) :: tokens) *)
-(*   = Symbol(symbol) *)
-
+    and stringToSexprs' _ = [Void]
 in
 val stringToSexpr = fn str =>
                        let val schemeTokensList = Scanner.stringToTokens(str)
