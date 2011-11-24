@@ -2,5 +2,8 @@
 hw1/*
 */#*#
 *.swp
+*~
 *.pdf
 *.ps
+TAGS
+hw2/tests

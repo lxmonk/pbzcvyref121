@@ -4,6 +4,10 @@
  *
  * Programmer: Mayer Goldberg, 2011
  *)
+Control.Print.printDepth := 500000;
+Control.Print.printLength := 500000;
+Control.Print.stringDepth := 500000;
+Control.polyEqWarn := false;
 
 fun rel() = use("/home/lxmonk/Documents/school/BA2/compilers/hw/hw2/compiler.sml");
 
@@ -364,8 +368,65 @@ fun stringToTokens(string) = stInit(explode(string))
 end;
 end; (* of structure Scanner *)
 
+(* print ("***************************************************\n" ^ "TESTS:\n"); *)
+(* Scanner.stringToTokens "()" = [LparenToken,RparenToken] ; *)
+(* Scanner.stringToTokens "(a b c)" = *)
+(*   [LparenToken,SymbolToken "a",SymbolToken "b",SymbolToken "c",RparenToken]; *)
+
+(* Scanner.stringToTokens "(a . b)" = [LparenToken,SymbolToken "a",DotToken,SymbolToken "b",RparenToken]; *)
+
+(*           Scanner.stringToTokens "(define abs (lambda (x) (if (negative? x) (- x) x)))" = [LparenToken,SymbolToken "define",SymbolToken "abs",LparenToken, *)
+(*                                                                                SymbolToken "lambda",LparenToken,SymbolToken "x",RparenToken,LparenToken, *)
+(*                                                                                SymbolToken "if",LparenToken,SymbolToken "negative?",SymbolToken "x", *)
+(*                                                                                RparenToken,LparenToken,SymbolToken "-",SymbolToken "x",RparenToken, *)
+(*                                                                                SymbolToken "x",RparenToken,RparenToken,RparenToken] ; *)
+(* Scanner.stringToTokens "#\\A" = [CharToken #"A"] ; *)
+(* Scanner.stringToTokens "#\\space" = [CharToken #" "] ; *)
+(* Scanner.stringToTokens "#\\return" = [CharToken #"\r"]; *)
+(* Scanner.stringToTokens "#\\newline" = [CharToken #"\n"]; *)
+(* Scanner.stringToTokens "#\\tab" = [CharToken #"\t"] ; *)
+(* Scanner.stringToTokens ")(." = [RparenToken,LparenToken,DotToken] ; *)
+(* Scanner.stringToTokens "#(a b c)" = *)
+(*   [VectorToken,SymbolToken "a",SymbolToken "b",SymbolToken "c",RparenToken]; *)
+
+(* Scanner.stringToTokens "#(a b . c)" = *)
+(*   [VectorToken,SymbolToken "a",SymbolToken "b",DotToken,SymbolToken "c", *)
+(*    RparenToken] ; *)
+
+(* print "TESTS:\n***************************************************\n"; *)
+
+
+
 structure Reader : READER =
 struct
+(* val stringToSexpr : string -> Sexpr; *)
+(* val stringToSexprs : string -> Sexpr list; *)
+local
+    fun stringToSexpr' (LparenToken :: RparenToken :: []) = Nil
+      (* | stringToSexpr' (LparenToken :: nextToken :: tokens) = *)
+      (*   Pair(stringToSexpr'([nextToken]), stringToSexpr'(tokens)) *)
+      | stringToSexpr' (SymbolToken(symbol) :: []) = Symbol(symbol)
+      | stringToSexpr' [LparenToken, token1, DotToken, token2, RparenToken] =
+        Pair(stringToSexpr' [token1], stringToSexpr' [token2])
+      (* (LparenToken :: token1 ::DotToken :: token2 :: RparenToken :: []) = *)
+        (* stringToSexpr'([token2]) *)
+      | stringToSexpr' (RparenToken :: []) = Nil
+      | stringToSexpr' _ = Void
+(* | stringToSexpr' (RparenToken :: tokens) = Nil *)
+(* | stringToSexpr' [SymbolToken(symbol), RparenToken] *)
+(*   = Nil *)
+(* | stringToSexpr' (SymbolToken(symbol) :: tokens) *)
+(*   = Symbol(symbol) *)
+
+in
+val stringToSexpr = fn str =>
+                       let val schemeTokensList = Scanner.stringToTokens(str)
+                       in
+                           stringToSexpr' schemeTokensList
+                       end
+val stringToSexprs = fn str => [Nil,Nil]
+end  (* end of local function scope *)
+
 end; (* of structure Reader *)
 
 structure TagParser : TAG_PARSER =
@@ -376,4 +437,7 @@ val reservedSymbols = ["and", "begin", "cond", "define", "else",
 
 fun reservedWord(str) =
     ormap (fn rs => (String.compare(rs, str) = EQUAL)) reservedSymbols;
+
+val stringToPE = fn str => Var("not implemented")
+val stringToPEs = fn str => [Var("not implemented"), Var("yet!")]
 end; (* of structure TagParser *)
