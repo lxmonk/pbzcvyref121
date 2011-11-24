@@ -402,15 +402,17 @@ struct
 (* val stringToSexpr : string -> Sexpr; *)
 (* val stringToSexprs : string -> Sexpr list; *)
 local
-    fun stringToSexpr' (LparenToken :: RparenToken :: []) = Nil
+    fun stringToSexpr' [LparenToken, RparenToken] = Nil
       (* | stringToSexpr' (LparenToken :: nextToken :: tokens) = *)
       (*   Pair(stringToSexpr'([nextToken]), stringToSexpr'(tokens)) *)
-      | stringToSexpr' (SymbolToken(symbol) :: []) = Symbol(symbol)
+      | stringToSexpr' [SymbolToken(symbol)] = Symbol(symbol)
+      | stringToSexpr' [StringToken(string)] = String(string)
+      | stringToSexpr' [BoolToken(bool)]     = Bool(bool)
+      | stringToSexpr' [CharToken(char)]     = Char(char)
+      | stringToSexpr' [IntToken(num)]       = Number(num)
       | stringToSexpr' [LparenToken, token1, DotToken, token2, RparenToken] =
         Pair(stringToSexpr' [token1], stringToSexpr' [token2])
-      (* (LparenToken :: token1 ::DotToken :: token2 :: RparenToken :: []) = *)
-        (* stringToSexpr'([token2]) *)
-      | stringToSexpr' (RparenToken :: []) = Nil
+      (* | stringToSexpr' [RparenToken] = Nil *)
       | stringToSexpr' _ = Void
 (* | stringToSexpr' (RparenToken :: tokens) = Nil *)
 (* | stringToSexpr' [SymbolToken(symbol), RparenToken] *)
