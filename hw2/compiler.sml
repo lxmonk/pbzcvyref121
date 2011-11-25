@@ -398,11 +398,22 @@ end; (* of structure Scanner *)
 exception BadSExpression of SchemeToken list;
 exception TokenListToSexprError of SchemeToken list;
 
-fun slurpSexpr ([], sexpr) = raise BadSExpression(rev sexpr)
-  | slurpSexpr (RparenToken :: tokens, sexprSoFar) =
+fun slurpSexpr(tokens, sexprSoFar, ~1) = raise BadSExpression(rev sexprSoFar)
+  | slurpSexpr ([], sexprSoFar, openParens) =
+    raise BadSExpression(rev sexprSoFar)
+  | slurpSexpr (LparenToken :: tokens, sexprSoFar, openParens) =
+    slurpSexpr (tokens, LparenToken::sexprSoFar, openParens + 1)
+  | slurpSexpr (VectorToken :: tokens, sexprSoFar, openParens) =
+    slurpSexpr (tokens, VectorToken::sexprSoFar, openParens + 1)
+  | slurpSexpr (RparenToken :: tokens, sexprSoFar, 1) =
     (rev (RparenToken::sexprSoFar), tokens)
-  | slurpSexpr (token :: tokens, sexprSoFar) =
-    slurpSexpr (tokens, token::sexprSoFar);
+  | slurpSexpr (RparenToken :: tokens, sexprSoFar, openParens) =
+    (* not balanced yet *)
+    slurpSexpr (tokens, RparenToken::sexprSoFar, openParens - 1)
+  | slurpSexpr (token :: tokens, sexprSoFar, 0) =
+    ([token], tokens)
+  | slurpSexpr (token :: tokens, sexprSoFar, openParens) =
+    slurpSexpr (tokens, token::sexprSoFar, openParens); (* inside Sexpr *)
 
 structure Reader : READER =
 struct
@@ -422,8 +433,14 @@ local
       | tokenListToSexpr [LparenToken, token1, DotToken, token2,
                                 RparenToken] = (*dotted pair*)
         Pair(tokenListToSexpr [token1], tokenListToSexpr [token2])
-      | tokenListToSexpr (LparenToken :: LparenToken :: tokens) =
-        let val sexprAndRest = slurpSexpr(LparenToken :: tokens, [LparenToken])
+      | tokenListToSexpr (LparenToken :: LparenToken :: tokens) = (* (( *)
+        let val sexprAndRest = slurpSexpr(LparenToken :: tokens, [], 0)
+        in
+            Pair(tokenListToSexpr (#1 sexprAndRest),
+                 tokenListToSexpr (#2 sexprAndRest))
+        end
+      | tokenListToSexpr (LparenToken :: VectorToken :: tokens) = (* (#( *)
+        let val sexprAndRest = slurpSexpr(VectorToken :: tokens, [], 0)
         in
             Pair(tokenListToSexpr (#1 sexprAndRest),
                  tokenListToSexpr (#2 sexprAndRest))
@@ -433,16 +450,17 @@ local
                                         token2 :: tokens))
       | tokenListToSexpr (VectorToken :: tokens) =
         Vector(tokenListToSexprs tokens) (* vector *)
-      | tokenListToSexpr err = Void
+      | tokenListToSexpr (RparenToken :: []) = Nil
+      | tokenListToSexpr err = (print("oops"); Void)
     and tokenListToSexprs [RparenToken] = [] (* end the list *)
       | tokenListToSexprs (VectorToken :: tokens) =
-        let val sexprAndRest = slurpSexpr(VectorToken::tokens, [])
+        let val sexprAndRest = slurpSexpr(VectorToken::tokens, [], 0)
         in
             tokenListToSexpr (#1 sexprAndRest) ::
             tokenListToSexprs (#2 sexprAndRest)
         end
       | tokenListToSexprs (LparenToken :: tokens) =
-        let val sexprAndRest = slurpSexpr(LparenToken::tokens, [])
+        let val sexprAndRest = slurpSexpr(LparenToken::tokens, [], 0)
         in
             tokenListToSexpr (#1 sexprAndRest) ::
             tokenListToSexprs (#2 sexprAndRest)
@@ -456,7 +474,11 @@ val stringToSexpr = fn str =>
                        in
                            tokenListToSexpr schemeTokensList
                        end
-val stringToSexprs = fn str => [Nil,Nil]
+val stringToSexprs = fn str =>
+                        let val schemeTokensList = Scanner.stringToTokens(str)
+                        in
+                            tokenListToSexprs schemeTokensList
+                        end
 end  (* end of local function scope *)
 
 end; (* of structure Reader *)
@@ -464,7 +486,7 @@ end; (* of structure Reader *)
 
 Reader.stringToSexpr "(a)" = Pair (Symbol "a",Nil);
 Reader.stringToSexpr "(a b . c)" = Pair (Symbol "a",Pair (Symbol "b",Symbol "c"));
-true orelse Reader.stringToSexpr "(define abs (lambda (x) (if (negative? x) (- x) x)))" =
+(* true orelse *) Reader.stringToSexpr "(define abs (lambda (x) (if (negative? x) (- x) x)))" =
   Pair
     (Symbol "define",
      Pair
