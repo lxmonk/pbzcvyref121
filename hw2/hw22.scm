@@ -4,6 +4,10 @@
 (define not-nil (lambda (el) (not (null? el))))
 (define (short-gensym)
   (string->symbol (symbol->string (gensym))))
+(define (map>2 f lst)
+  (if (>= 2 (depth lst))
+      (f lst)
+      (map f lst)))
 
 (define (d sexpr dep)
   (cond ((not (list? sexpr)) dep)
@@ -123,16 +127,28 @@
                     (list sym (list sym sexpr)))))))
     (map replace-if-needed first-row)))
 
+(define replace-if-needed-2
+  (lambda (sexpr)
+    (if (< 1 (depth sexpr))
+        (push-down-1 sexpr)
+        (list sexpr '()))))
+
 (define (push-down-2 let-ribs-list simplified-row next-row)
+  ;; (display `("PUSH-2: \n\tlet-ribs-list=" ,let-ribs-list
+  ;;            "\n\tsimplified-row=" ,simplified-row
+  ;;            "\n\tnext-row=" ,next-row "\n\n"))
   (if (null? let-ribs-list)
       (list simplified-row next-row)
       (let* ((rib (car let-ribs-list))
              (let-sym (car rib))
              (sexpr (cadr rib))
-             (replaced-sexpr (replace-if-needed sexpr))
+             (replaced-sexpr (replace-if-needed-2 sexpr))
              (simplified-sexpr (cons let-sym
-                                     (list (car replaced-sexpr))))
-             (next-row-sexpr (cadr replaced-sexpr)))
+                                     (list (map>2 car replaced-sexpr))))
+             (next-row-sexpr (if (null? (cadr replaced-sexpr))
+                                 '()
+                                 (filter not-nil
+                                         (map cadr replaced-sexpr)))))
         (push-down-2 (cdr let-ribs-list)
                      (append simplified-row (list simplified-sexpr))
                      (cons next-row-sexpr next-row)))))
@@ -153,23 +169,23 @@
       let-list
       (let* ((first-in-list (car let-list))
              (both-new-rows (push-down-2 first-in-list '() '()))
-             (new-first-row (map car both-new-rows))
+             (new-first-row (car both-new-rows))
              (new-second-row (filter not-nil
-                                     (map cadr both-new-rows))))
+                                     (cadr both-new-rows))))
         (cons new-first-row
               (go-over-lines (cons new-second-row (cddr let-list)))))))
 
 
 (define parallelize
   (lambda (sexpr-list)
+    (trace!)
     (let* ((dep (mx (map depth sexpr-list)))
            (init-list (make-list (1+ dep) '()))
            (decon-list (append (list sexpr-list) (cdr init-list)))
            (after-first-go (go-over-first-line decon-list))
            (newlist (cons (car after-first-go)
                           (go-over-lines (cdr after-first-go)))))
-                     ;     (scan-lines-in-pairs (cdr after-first-go)))))
-      (nl) (nl) (nl) (nl)
+      ;;      (nl) (nl) (nl) (nl)
       newlist)))
 
 
@@ -184,7 +200,8 @@
   (trace push-down-1)
   (trace go-over-first-line)
   (trace go-over-lines)
-  (trace push-down-2))
+  (trace push-down-2)
+  (trace replace-if-needed-2))
 
 (define (last lst)
   (if (null? (cdr lst))
