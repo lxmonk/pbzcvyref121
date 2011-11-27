@@ -121,18 +121,44 @@
                   (list sexpr '())
                   (let ((sym (short-gensym)))
                     (list sym (list sym sexpr)))))))
-           (map replace-if-needed first-row)))
+    (map replace-if-needed first-row)))
+
+(define (push-down-2 let-ribs-list simplified-row next-row)
+  (if (null? let-ribs-list)
+      (list simplified-row next-row)
+      (let* ((rib (car let-ribs-list))
+             (let-sym (car rib))
+             (sexpr (cadr rib))
+             (replaced-sexpr (replace-if-needed sexpr))
+             (simplified-sexpr (cons let-sym
+                                     (list (car replaced-sexpr))))
+             (next-row-sexpr (cadr replaced-sexpr)))
+        (push-down-2 (cdr let-ribs-list)
+                     (append simplified-row (list simplified-sexpr))
+                     (cons next-row-sexpr next-row)))))
 
 (define (go-over-first-line full-list)
   ;; return the full list after 1st row is finalized and second is
   ;; with symbols from first, not yet finalized.
   (let* ((first-row (car full-list))
-         (second-row (cadr full-list))
          (both-new-rows (push-down-1 first-row))
          (new-first-row (map car both-new-rows))
          (new-second-row (filter not-nil (map cadr both-new-rows)))
          (simplified-2-rows (list new-first-row new-second-row)))
     (append simplified-2-rows (cddr full-list))))
+
+
+(define (go-over-lines let-list)
+  (if (null? (cdr let-list))
+      let-list
+      (let* ((first-in-list (car let-list))
+             (both-new-rows (push-down-2 first-in-list '() '()))
+             (new-first-row (map car both-new-rows))
+             (new-second-row (filter not-nil
+                                     (map cadr both-new-rows))))
+        (cons new-first-row
+              (go-over-lines (cons new-second-row (cddr let-list)))))))
+
 
 (define parallelize
   (lambda (sexpr-list)
@@ -140,7 +166,8 @@
            (init-list (make-list (1+ dep) '()))
            (decon-list (append (list sexpr-list) (cdr init-list)))
            (after-first-go (go-over-first-line decon-list))
-           (newlist after-first-go));(cons (car after-first-go)
+           (newlist (cons (car after-first-go)
+                          (go-over-lines (cdr after-first-go)))))
                      ;     (scan-lines-in-pairs (cdr after-first-go)))))
       (nl) (nl) (nl) (nl)
       newlist)))
@@ -155,7 +182,9 @@
   (trace replace)
   (trace replace-list)
   (trace push-down-1)
-  (trace go-over-first-line))
+  (trace go-over-first-line)
+  (trace go-over-lines)
+  (trace push-down-2))
 
 (define (last lst)
   (if (null? (cdr lst))
