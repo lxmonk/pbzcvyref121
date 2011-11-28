@@ -12,11 +12,15 @@
 (define (d sexpr dep)
   (cond ((not (list? sexpr)) dep)
         ((null? sexpr) dep)
-        (else (max (d (car sexpr) (+ 1 dep))
+        (else (max (d (car sexpr) (1+ dep))
                    (d (cdr sexpr) dep)))))
 
 (define (depth el)
   (d el 0))
+
+;; (define (map-depth sexpr)
+;;   (letrec ((mapper
+;;             (lambda sexpr)))))
 
 (define mx
   (lambda (lst)
@@ -127,31 +131,80 @@
                     (list sym (list sym sexpr)))))))
     (map replace-if-needed first-row)))
 
-(define replace-if-needed-2
-  (lambda (sexpr)
-    (if (< 1 (depth sexpr))
-        (push-down-1 sexpr)
-        (list sexpr '()))))
+(define replace-all-d=1
+  (lambda (sexpr staying going)
+    (cond ((null? sexpr) (list staying going))
+          ((= 0 (depth (car sexpr)))
+           (replace-all-d=1 (cdr sexpr) staying
+                            (append going `(,(car sexpr)))))
+          ((= 1 (depth (car sexpr)))
+           (let ((sym (short-gensym)))
+             (replace-all-d=1 (cdr sexpr)
+                              (cons (list sym (car sexpr)) staying)
+                              (append going `(,sym)))))
+          ((< 1 (depth (car sexpr)))
+           (let* ((returned-expr (replace-all-d=1 (car sexpr) '() '()))
+                  (stay-part (car returned-expr))
+                  (go-part (cadr returned-expr)))
+             (replace-all-d=1 (cdr sexpr) (cons stay-part staying)
+                              (append going (list go-part))))))))
+
+
+;; (define (push-down-2 sexpr)
+;;   (let ((maximal-depth
+;;          (apply max (map depth sexpr))))
+;;     (letrec ((replace-if-d=max
+;;               (lambda (sexpr new-sexpr next-let-rib
+;;                              depth-to-replace)
+;;                 (if (= depth-to-replace (depth (car sexpr))))))))))
+
+;; (define replace-if-needed-2
+;;   (lambda (sexpr)
+;;     (if (< 1 (depth sexpr))
+;;         (push-down-2 sexpr)
+;;         (list sexpr '()))))
+
+(define (push-down-11 sexpr)
+  (if (= 1 (depth sexpr))
+      (map (lambda (el) (list el '())) sexpr)
+      (map
+       (lambda (el)
+         (cond ((= 0 (depth el)) (list '()  el))
+               ((= 1 (depth el))
+                (let ((sym (short-gensym)))
+                  (list (list sym el) sym)))
+               (else (replace-all-d=1 el '() '())))) sexpr)))
 
 (define (push-down-2 let-ribs-list simplified-row next-row)
-  ;; (display `("PUSH-2: \n\tlet-ribs-list=" ,let-ribs-list
-  ;;            "\n\tsimplified-row=" ,simplified-row
-  ;;            "\n\tnext-row=" ,next-row "\n\n"))
   (if (null? let-ribs-list)
       (list simplified-row next-row)
       (let* ((rib (car let-ribs-list))
              (let-sym (car rib))
              (sexpr (cadr rib))
-             (replaced-sexpr (replace-if-needed-2 sexpr))
-             (simplified-sexpr (cons let-sym
-                                     (list (map>2 car replaced-sexpr))))
-             (next-row-sexpr (if (null? (cadr replaced-sexpr))
-                                 '()
-                                 (filter not-nil
-                                         (map cadr replaced-sexpr)))))
+             (staying-and-going (push-down-11 sexpr))
+             (next-row-sexpr-tmp (or (and (not-nil (cadr staying-and-going))
+                                          (filter not-nil
+                                                  (map cadr
+                                                       staying-and-going)))
+                                     '()))
+             (simplified-sexpr-tmp (map car staying-and-going))
+             (simplified-sexpr-unboxed (filter not-nil
+                                       (if (null? next-row-sexpr-tmp)
+                                           (cons let-sym
+                                                 (list simplified-sexpr-tmp))
+                                           simplified-sexpr-tmp)))
+             (simplified-sexpr (if (< 2 (depth simplified-sexpr-unboxed))
+                                   simplified-sexpr-unboxed
+                                   (list simplified-sexpr-unboxed)))
+             (next-row-sexpr (if (null? next-row-sexpr-tmp) '()
+                                 (cons let-sym (list next-row-sexpr-tmp)))))
+        (display `("\n\n" PUSH-DOWN-2: " simplified-sexpr: " ,simplified-sexpr
+                                " next-row-sexpr: " ,next-row-sexpr "\n\n"))
         (push-down-2 (cdr let-ribs-list)
-                     (append simplified-row (list simplified-sexpr))
-                     (cons next-row-sexpr next-row)))))
+                     (append simplified-row simplified-sexpr)
+                     (if (not-nil next-row-sexpr)
+                         (cons next-row-sexpr next-row)
+                         next-row)))))
 
 (define (go-over-first-line full-list)
   ;; return the full list after 1st row is finalized and second is
@@ -175,6 +228,15 @@
         (cons new-first-row
               (go-over-lines (cons new-second-row (cddr let-list)))))))
 
+(define (create-let newlist)
+  (let* ((buttom-line (car newlist))
+         (reversed-list (reverse (cdr newlist))))
+    (if (or (null? reversed-list)
+            (null? (car reversed-list)))
+        buttom-line
+        (cons (map (lambda (rib)
+                     `(let ,rib)) reversed-list)
+              buttom-line))))
 
 (define parallelize
   (lambda (sexpr-list)
@@ -186,6 +248,7 @@
            (newlist (cons (car after-first-go)
                           (go-over-lines (cdr after-first-go)))))
       ;;      (nl) (nl) (nl) (nl)
+      ;;      (create-let
       newlist)))
 
 
@@ -198,10 +261,11 @@
   (trace replace)
   (trace replace-list)
   (trace push-down-1)
+  (trace push-down-11)
   (trace go-over-first-line)
   (trace go-over-lines)
   (trace push-down-2)
-  (trace replace-if-needed-2))
+  (trace replace-all-d=1))
 
 (define (last lst)
   (if (null? (cdr lst))
@@ -211,3 +275,4 @@
 (define ex1 '(a (b c) (d (e f)) (g h) (i (j k))))
 (define ex2 '(a1 (a2 (a3 (a4 (a5 x))))))
 (define ex3 '(((a b) (c d)) ((e f) (g h))))
+(define ex4 '(((a)))) ;(= 3 (depth ex4)) => #t
