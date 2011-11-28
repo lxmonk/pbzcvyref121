@@ -93,7 +93,6 @@
           (else (raise "replace - else clause called.")))))
 
 (define (replaced-and-pushed-sexpr row first?)
-  ;; (display `("\nREPLACED-AND-PUSHED-SEXPR row=" ,row "\n"))
   (cond ((null? row) row)
         ((= 0 (depth (car row)))
          (cons (list (car row) '())
@@ -182,7 +181,7 @@
              (let-sym (car rib))
              (sexpr (cadr rib))
              (staying-and-going (push-down-11 sexpr))
-             (next-row-sexpr-tmp (or (and (not-nil (cadr staying-and-going))
+             (next-row-sexpr-tmp (or (and (list? (cdr staying-and-going))
                                           (filter not-nil
                                                   (map cadr
                                                        staying-and-going)))
@@ -198,8 +197,6 @@
                                    (list simplified-sexpr-unboxed)))
              (next-row-sexpr (if (null? next-row-sexpr-tmp) '()
                                  (cons let-sym (list next-row-sexpr-tmp)))))
-        (display `("\n\n" PUSH-DOWN-2: " simplified-sexpr: " ,simplified-sexpr
-                                " next-row-sexpr: " ,next-row-sexpr "\n\n"))
         (push-down-2 (cdr let-ribs-list)
                      (append simplified-row simplified-sexpr)
                      (if (not-nil next-row-sexpr)
@@ -227,29 +224,42 @@
                                      (cadr both-new-rows))))
         (cons new-first-row
               (go-over-lines (cons new-second-row (cddr let-list)))))))
+(define (fix-depth rib)
+  (if (>= 3 (depth rib))
+      rib
+      (fix-depth (car rib))))
 
-(define (create-let newlist)
-  (let* ((buttom-line (car newlist))
-         (reversed-list (reverse (cdr newlist))))
-    (if (or (null? reversed-list)
-            (null? (car reversed-list)))
+(define (create-let newlist buttom-line)
+  (letrec ((rec-let
+            (lambda (ribs)
+              (if (null? (cdr ribs))
+                  `(let ,(fix-depth ribs) ,buttom-line)
+                  `(let ,(fix-depth (car ribs))
+                     ,(rec-let (cdr ribs)))))))
+    (if (or (null? newlist)
+            (null? (car newlist)))
         buttom-line
-        (cons (map (lambda (rib)
-                     `(let ,rib)) reversed-list)
-              buttom-line))))
+        `,(rec-let newlist)
+;;         (`(let ,(car newlist))
+;; ; `((let ,(cadr newlist) ,buttom-line))
+;;                 (rec-let (cdr newlist))
+                ))))
 
 (define parallelize
   (lambda (sexpr-list)
-    (trace!)
-    (let* ((dep (mx (map depth sexpr-list)))
-           (init-list (make-list (1+ dep) '()))
-           (decon-list (append (list sexpr-list) (cdr init-list)))
-           (after-first-go (go-over-first-line decon-list))
-           (newlist (cons (car after-first-go)
-                          (go-over-lines (cdr after-first-go)))))
-      ;;      (nl) (nl) (nl) (nl)
-      ;;      (create-let
-      newlist)))
+;    (trace!)
+    (if (>= 1 (depth sexpr-list))
+        sexpr-list
+        (let* ((dep (mx (map depth sexpr-list)))
+            (init-list (make-list (1+ dep) '()))
+            (decon-list (append (list sexpr-list) (cdr init-list)))
+            (after-first-go (go-over-first-line decon-list))
+            (reslist (cons (car after-first-go)
+                           (go-over-lines (cdr after-first-go))))
+            (buttom-line (car reslist))
+            (newlist (cdr reslist)))
+       (nl) (display reslist) (nl) (nl)
+       (create-let newlist buttom-line)))))
 
 
 
@@ -276,3 +286,4 @@
 (define ex2 '(a1 (a2 (a3 (a4 (a5 x))))))
 (define ex3 '(((a b) (c d)) ((e f) (g h))))
 (define ex4 '(((a)))) ;(= 3 (depth ex4)) => #t
+(define ex5 '((((( a1 a2) a3) a4) a5) a6))
