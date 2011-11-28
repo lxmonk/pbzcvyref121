@@ -239,7 +239,7 @@
     (if (or (null? newlist)
             (null? (car newlist)))
         buttom-line
-        `,(rec-let newlist)
+        (rec-let newlist)
 ;;         (`(let ,(car newlist))
 ;; ; `((let ,(cadr newlist) ,buttom-line))
 ;;                 (rec-let (cdr newlist))
@@ -258,7 +258,6 @@
                            (go-over-lines (cdr after-first-go))))
             (buttom-line (car reslist))
             (newlist (cdr reslist)))
-       (nl) (display reslist) (nl) (nl)
        (create-let newlist buttom-line)))))
 
 
@@ -286,4 +285,11 @@
 (define ex2 '(a1 (a2 (a3 (a4 (a5 x))))))
 (define ex3 '(((a b) (c d)) ((e f) (g h))))
 (define ex4 '(((a)))) ;(= 3 (depth ex4)) => #t
-(define ex5 '((((( a1 a2) a3) a4) a5) a6))
+(define ex5 '(((((a1 a2) a3) a4) a5) a6))
+(define ex6 '((((a b) (c d) (e f))
+               (g h)
+               (i j))
+              (k (l m))))
+(define ex7 '(a (b c) (d e) (f g)))
+(define ex8 '((a b) (a b)))
+(define ex9 '(a (b c) (d (e f) (g (h i) (j k)))))
