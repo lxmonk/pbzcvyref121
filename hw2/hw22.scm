@@ -149,19 +149,16 @@
                               (append going (list go-part))))))))
 
 
-;; (define (push-down-2 sexpr)
-;;   (let ((maximal-depth
-;;          (apply max (map depth sexpr))))
-;;     (letrec ((replace-if-d=max
-;;               (lambda (sexpr new-sexpr next-let-rib
-;;                              depth-to-replace)
-;;                 (if (= depth-to-replace (depth (car sexpr))))))))))
-
-;; (define replace-if-needed-2
-;;   (lambda (sexpr)
-;;     (if (< 1 (depth sexpr))
-;;         (push-down-2 sexpr)
-;;         (list sexpr '()))))
+(define (flatten-so-d=3 lst)
+  (letrec ((flatterner
+            (lambda (oldlst newlst)
+              (if (null? oldlst)
+                  newlst
+                  (let ((el (car oldlst)))
+                    (if (= 2 (depth el))
+                        (flatterner (cdr oldlst) (cons el newlst))
+                        (flatterner (cdr oldlst) (append newlst el))))))))
+    (flatterner lst '())))
 
 (define (push-down-11 sexpr)
   (if (= 1 (depth sexpr))
@@ -176,7 +173,7 @@
 
 (define (push-down-2 let-ribs-list simplified-row next-row)
   (if (null? let-ribs-list)
-      (list simplified-row next-row)
+      (list (flatten-so-d=3 simplified-row) next-row)
       (let* ((rib (car let-ribs-list))
              (let-sym (car rib))
              (sexpr (cadr rib))
@@ -224,10 +221,12 @@
                                      (cadr both-new-rows))))
         (cons new-first-row
               (go-over-lines (cons new-second-row (cddr let-list)))))))
+
 (define (fix-depth rib)
-  (if (>= 3 (depth rib))
-      rib
-      (fix-depth (car rib))))
+  rib)
+  ;; (if (<= 3 (depth rib))
+  ;;     rib
+  ;;     (cons (fix-depth (car rib) (fix-depth (cdr rib))))))
 
 (define (create-let newlist buttom-line)
   (letrec ((rec-let
@@ -274,7 +273,10 @@
   (trace go-over-first-line)
   (trace go-over-lines)
   (trace push-down-2)
-  (trace replace-all-d=1))
+  (trace replace-all-d=1)
+  (trace flatten-so-d=3)
+  (trace fix-depth)
+  (trace create-let))
 
 (define (last lst)
   (if (null? (cdr lst))
