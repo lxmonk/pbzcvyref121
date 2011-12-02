@@ -10,3 +10,5 @@ hw2/tests
 /hw2/.#compiler.sml
 /hw2/.#hw22.scm
 /hw2/reader.txt
+/hw2/.#reader.txt
+/hw2/scratch.sml
