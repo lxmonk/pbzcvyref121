@@ -415,7 +415,7 @@ end; (* of structure Scanner *)
 (*     slurpSexpr (tokens, token::sexprSoFar, openParens); (* inside Sexpr *) *)
 
 fun listToPairs ([], b) = b
-  | listToPairs (a::s, b) =
+  | listToPairs (a::s, b) = (* (print "listToPairs!!"; *)
     Pair(a, (listToPairs(s, b)));
     
 exception BadSExpression of SchemeToken list;
@@ -456,7 +456,7 @@ local
              (SOME(listToPairs(sexprs, Nil)), toks)
            | (sexprs as (_::_), DotToken::toks) =>
              (case (gs toks) of
-                  (SOME(sexpr), toks) =>
+                  (SOME(sexpr), RparenToken::toks) =>
                   (SOME(listToPairs(sexprs,sexpr)),toks)
                 | _ => raise BadSExpressionLparen(toks))
            | _ => raise BadSExpressionLparen(toks)) (* this line +-+- *)
@@ -474,7 +474,7 @@ val stringToSexpr = fn str =>   (* (sexpr, []) = sexpr; or raise error *)
                        in
                            (case (gs schemeTokensList) of
                                 (SOME(ret) : Sexpr option, []) => ret
-                              | _ =>(print ()) raise BadSExpression(schemeTokensList))
+                              | _ => raise BadSExpression(schemeTokensList))
                        end
 val stringToSexprs = fn str =>
                         let val schemeTokensList = Scanner.stringToTokens(str)
@@ -489,7 +489,7 @@ end; (* of structure Reader *)
 
 Reader.stringToSexpr "(a)" = Pair (Symbol "a",Nil);
 Reader.stringToSexpr "(a b . c)" = Pair (Symbol "a",Pair (Symbol "b",Symbol "c"));
-true orelse Reader.stringToSexpr "(define abs (lambda (x) (if (negative? x) (- x) x)))" =
+Reader.stringToSexpr "(define abs (lambda (x) (if (negative? x) (- x) x)))" =
   Pair
     (Symbol "define",
      Pair
