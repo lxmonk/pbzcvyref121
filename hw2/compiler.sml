@@ -250,6 +250,7 @@ signature TAG_PARSER =
 sig
     val stringToPE : string -> Expr;
     val stringToPEs : string -> Expr list;
+    val parse : Sexpr -> Expr;  (* TODO: FIXME!! *)
 end;
 
 exception NotAList of Sexpr;
@@ -368,55 +369,16 @@ fun stringToTokens(string) = stInit(explode(string))
 end;
 end; (* of structure Scanner *)
 
-(* print ("***************************************************\n" ^ "TESTS:\n"); *)
-(* Scanner.stringToTokens "()" = [LparenToken,RparenToken] ; *)
-(* Scanner.stringToTokens "(a b c)" = *)
-(*   [LparenToken,SymbolToken "a",SymbolToken "b",SymbolToken "c",RparenToken]; *)
-
-(* Scanner.stringToTokens "(a . b)" = [LparenToken,SymbolToken "a",DotToken,SymbolToken "b",RparenToken]; *)
-
-(*           Scanner.stringToTokens "(define abs (lambda (x) (if (negative? x) (- x) x)))" = [LparenToken,SymbolToken "define",SymbolToken "abs",LparenToken, *)
-(*                                                                                SymbolToken "lambda",LparenToken,SymbolToken "x",RparenToken,LparenToken, *)
-(*                                                                                SymbolToken "if",LparenToken,SymbolToken "negative?",SymbolToken "x", *)
-(*                                                                                RparenToken,LparenToken,SymbolToken "-",SymbolToken "x",RparenToken, *)
-(*                                                                                SymbolToken "x",RparenToken,RparenToken,RparenToken] ; *)
-(* Scanner.stringToTokens "#\\A" = [CharToken #"A"] ; *)
-(* Scanner.stringToTokens "#\\space" = [CharToken #" "] ; *)
-(* Scanner.stringToTokens "#\\return" = [CharToken #"\r"]; *)
-(* Scanner.stringToTokens "#\\newline" = [CharToken #"\n"]; *)
-(* Scanner.stringToTokens "#\\tab" = [CharToken #"\t"] ; *)
-(* Scanner.stringToTokens ")(." = [RparenToken,LparenToken,DotToken] ; *)
-(* Scanner.stringToTokens "#(a b c)" = *)
-(*   [VectorToken,SymbolToken "a",SymbolToken "b",SymbolToken "c",RparenToken]; *)
-
-(* Scanner.stringToTokens "#(a b . c)" = *)
-(*   [VectorToken,SymbolToken "a",SymbolToken "b",DotToken,SymbolToken "c", *)
-(*    RparenToken] ; *)
-
-(* print "TESTS:\n***************************************************\n"; *)
-
-
-
-(* fun slurpSexpr(tokens, sexprSoFar, ~1) = raise BadSExpression(rev sexprSoFar) *)
-(*   | slurpSexpr ([], sexprSoFar, openParens) = *)
-(*     raise BadSExpression(rev sexprSoFar) *)
-(*   | slurpSexpr (LparenToken :: tokens, sexprSoFar, openParens) = *)
-(*     slurpSexpr (tokens, LparenToken::sexprSoFar, openParens + 1) *)
-(*   | slurpSexpr (VectorToken :: tokens, sexprSoFar, openParens) = *)
-(*     slurpSexpr (tokens, VectorToken::sexprSoFar, openParens + 1) *)
-(*   | slurpSexpr (RparenToken :: tokens, sexprSoFar, 1) = *)
-(*     (rev (RparenToken::sexprSoFar), tokens) *)
-(*   | slurpSexpr (RparenToken :: tokens, sexprSoFar, openParens) = *)
-(*     (* not balanced yet *) *)
-(*     slurpSexpr (tokens, RparenToken::sexprSoFar, openParens - 1) *)
-(*   | slurpSexpr (token :: tokens, sexprSoFar, 0) = *)
-(*     ([token], tokens) *)
-(*   | slurpSexpr (token :: tokens, sexprSoFar, openParens) = *)
-(*     slurpSexpr (tokens, token::sexprSoFar, openParens); (* inside Sexpr *) *)
-
 fun listToPairs ([], b) = b
   | listToPairs (a::s, b) = (* (print "listToPairs!!"; *)
     Pair(a, (listToPairs(s, b)));
+
+    
+exception PairsToListError;
+          
+fun pairsToList (Nil) = []
+  | pairsToList (Pair(p1, p2)) = p1 :: pairsToList(p2)
+  | pairsToList err = raise PairsToListError;
     
 exception BadSExpression of SchemeToken list;
 exception BadSExpressionQuote of SchemeToken list;
@@ -427,8 +389,6 @@ exception TokenListToSexprError of SchemeToken list;
 
 structure Reader : READER =
 struct
-(* val stringToSexpr : string -> Sexpr; *)
-(* val stringToSexprs : string -> Sexpr list; *)
 local
     fun gs [] = (NONE, [])
       | gs (toks as RparenToken::_) = (NONE, toks)
@@ -487,100 +447,95 @@ end; (* of local functions *)
 end; (* of structure Reader *)
 
 
-Reader.stringToSexpr "(a)" = Pair (Symbol "a",Nil);
-Reader.stringToSexpr "(a b . c)" = Pair (Symbol "a",Pair (Symbol "b",Symbol "c"));
-Reader.stringToSexpr "(define abs (lambda (x) (if (negative? x) (- x) x)))" =
-  Pair
-    (Symbol "define",
-     Pair
-       (Symbol "abs",
-        Pair
-          (Pair
-             (Symbol "lambda",
-              Pair
-                (Pair (Symbol "x",Nil),
-                 Pair
-                   (Pair
-                      (Symbol "if",
-                       Pair
-                         (Pair (Symbol "negative?",Pair (Symbol "x",Nil)),
-                          Pair
-                            (Pair (Symbol "-",Pair (Symbol "x",Nil)),
-                             Pair (Symbol "x",Nil)))),Nil))),Nil)));
-Reader.stringToSexpr "#(a b c)" = Vector [Symbol "a",Symbol "b",Symbol "c"];
-Reader.stringToSexpr "()" = Nil;
 
+    
 structure TagParser : TAG_PARSER =
 struct
+exception MissingFeatureException;
+exception ErrorTypingLamb;
+exception ErrorReservedWordUsedImproperly;
+          
 val reservedSymbols = ["and", "begin", "cond", "define", "else",
                        "if", "lambda", "let", "let*", "letrec",
                        "or", "quote", "set!"];
 
 fun reservedWord(str) =
-    ormap (fn rs => (String.compare(rs, str) = EQUAL)) reservedSymbols;
+    ormap (fn rs => (String.compare(rs, str) = EQUAL))
+          reservedSymbols;
+datatype lamb = Sim of string list
+             | Opt of (string list * string)
+             | Vard of string;
 
-val stringToPE = fn str => Var("not implemented")
+fun lambtype (Nil : Sexpr) = Sim []
+  | lambtype (Pair(Symbol(str), rest)) =
+    (case (lambtype rest) of
+         Sim(vars) => Sim(str::vars)
+       | Opt(vars, var) => Opt((str::vars), var)
+       | Vard(var) => Opt([str],var))
+  | lambtype (Symbol(str)) = Vard(str)
+  | lambtype (_ : Sexpr) = raise ErrorTypingLamb;
+
+(* fun packageAsSeq ([sexpr]) = sexpr *)
+(*   | packageAsSeq (sexprs as [sexpr::s]) = Pair(Symbol("begin"),; *)
+                             
+(* local *)
+    fun parse Void = Const(Void)
+      | parse Nil = Const(Nil)
+      | parse (Vector(sexprs)) = Const(Vector(sexprs)) (* FIXME! *)
+      | parse (str as String(s)) = Const(str)
+      | parse (n as Number(num)) = Const(n)
+      | parse (b as Bool(bool)) = Const(b)
+      | parse (c as Char(ch)) = Const(c)
+      | parse (Symbol(sym)) = (case (reservedWord(sym)) of
+                                   false => Var(sym)
+                                 | true => raise
+                                       ErrorReservedWordUsedImproperly)
+      | parse (Pair(Symbol("quote"), Pair(s as Symbol(sym),Nil))) =
+        Const(s)
+      | parse (Pair(Symbol("quote"), Pair(n as Number(num),Nil))) =
+        Const(n)
+      | parse (Pair(Symbol("quote"), Pair(v as Vector(elements), Nil))) =
+        Const(v)
+      | parse (Pair(Symbol("quote"), Pair(c as Char(ch), Nil))) = Const(c)
+      | parse (Pair(Symbol("quote"), Pair(b as Bool(bo), Nil))) = Const(b)
+      | parse (Pair(Symbol("quote"), Pair(Nil, Nil))) = Const(Nil)
+      | parse (Pair(Symbol("quote"), Pair(sexpr,Nil))) = Const(sexpr)
+      | parse (Pair(Symbol("lambda"), Pair(vars,Pair(body,Nil)))) =
+        (case lambtype(vars) of
+             Sim(varlist) => Abs(varlist,parse(Pair(Symbol("begin"),body)))
+           | Opt(vars, var) => AbsOpt(vars, var,
+                                      parse(Pair(Symbol("begin"), body)))
+           | Vard(var) => AbsVar(var, parse(Pair(Symbol("begin"), body))))
+      | parse (Pair(Symbol("if"), Pair(test, Pair(dit,Nil)))) =
+        parse (Pair(Symbol("if"), Pair(test, Pair(dit, Pair(Void, Nil)))))
+      | parse (Pair(Symbol("if"), Pair(test, Pair(dit, Pair(dif, Nil))))) =
+        If(parse(test), parse(dit), parse(dif))
+      | parse (Pair(Symbol("define"), Pair(sym as Symbol(defined_symbol),
+                                           Pair(definition, Nil)))) =
+        Def(parse(sym), parse(definition))
+      | parse (Pair(def as Symbol("define"),
+                    Pair(Pair(sym as Symbol(defined_symbol), vars),
+                         bodyNil as Pair(body, Nil)))) =
+        parse (Pair(def, Pair(sym, (Pair(Pair(Symbol("lambda"),
+                                              Pair(vars, bodyNil)),
+                                         Nil)))))
+      | parse (Pair(Symbol("begin"), body)) =
+        (case (body) of
+             (Pair (b, Nil)) => parse(b)
+           | (bod as Pair(p1, p2)) => Seq(map parse (pairsToList bod))
+           | _ => parse (body))
+      | parse (Pair(sym as Symbol(operator), operands)) =
+        App(parse(sym), map parse (pairsToList operands))
+
+      | parse err = (print (sexprToString err); raise MissingFeatureException)
+(* in *)
+val stringToPE = fn str => (* Var("not implemented") *)
+                    let val sexpr = Reader.stringToSexpr(str)
+                    in
+                        parse(sexpr)
+                    end
 val stringToPEs = fn str => [Var("not implemented"), Var("yet!")]
+(* end; (* of local funcs *) *)
 end; (* of structure TagParser *)
 
-(* local *)
-(*     fun tokenListToSexpr [LparenToken, token1, DotToken, token2, RparenToken] = *)
-(*         (print "1\n"; Pair(tokenListToSexpr [token1], *)
-(*                            tokenListToSexpr [token2]))(*dotted pair*) *)
-(*       (* | tokenListToSexpr [token1, DotToken, token2, RparenToken] = *) *)
-(*       (*   (print "2\n"; Pair(tokenListToSexpr [token1], tokenListToSexpr [token2])) *) *)
-(*       | tokenListToSexpr [DotToken, token1, RparenToken] = *)
-(*         (print "3\n"; tokenListToSexpr [token1]) *)
-(*       | tokenListToSexpr [SymbolToken(symbol)] = (print ("symbol: "^symbol^"\n"); Symbol(symbol)) *)
-(*       | tokenListToSexpr [StringToken(string)] = (print "string"; String(string)) *)
-(*       | tokenListToSexpr [BoolToken(bool)]     = (print "bool"; Bool(bool)) *)
-(*       | tokenListToSexpr [CharToken(char)]     = (print "char"; Char(char)) *)
-(*       | tokenListToSexpr [IntToken(num)]       = (print "num"; Number(num)) *)
-(*       | tokenListToSexpr [LparenToken, RparenToken] = Nil (* [] *) *)
-(*       | tokenListToSexpr [LparenToken, token, RparenToken] = *)
-(*         (print "4\n"; Pair(tokenListToSexpr [token], Nil) (* singleton *)) *)
-(*       | tokenListToSexpr ((* LparenToken :: *) LparenToken :: tokens) = (* (( *) *)
-(*         let val sexprAndRest = slurpSexpr(LparenToken::tokens, [], 0) *)
-(*         in *)
-(*             (print "5\n"; MLListToScheme(tokenListToSexprs (tl (#1 sexprAndRest)) @ *)
-(*                            tokenListToSexprs((#2 sexprAndRest)))) *)
-(*         end *)
-(*       | tokenListToSexpr ((* LparenToken :: *) VectorToken :: tokens) = (* (#( *) *)
-(*         let val sexprAndRest = slurpSexpr(VectorToken :: tokens, [], 0) *)
-(*         in *)
-(*             (print "vector\n"; Pair(tokenListToSexpr (tl (#1 sexprAndRest)), *)
-(*                  tokenListToSexpr (#2 sexprAndRest))) *)
-(*         end *)
-(*       | tokenListToSexpr (RparenToken :: []) = (print "RparenToken"; Nil) *)
-(*       | tokenListToSexpr err = raise TokenListToSexprError(err)(* (print("oops\n"); Void) *) *)
-(*     and tokenListToSexprs [] = (print "s-[]\n"; [Nil]) *)
-(*       | tokenListToSexprs [RparenToken] = [] (* end the list *) *)
-(*       | tokenListToSexprs (VectorToken :: tokens) = *)
-(*         let val sexprAndRest = slurpSexpr(VectorToken::tokens, [], 0) *)
-(*         in *)
-(*             tokenListToSexpr (#1 sexprAndRest) :: *)
-(*             tokenListToSexprs (#2 sexprAndRest) *)
-(*         end *)
-(*       | tokenListToSexprs (LparenToken :: tokens) = *)
-(*         let val sexprAndRest = slurpSexpr(LparenToken::tokens, [], 0) *)
-(*         in *)
-(*             tokenListToSexpr (tl (#1 sexprAndRest)) :: *)
-(*             tokenListToSexprs (#2 sexprAndRest) *)
-(*         end *)
-(*       | tokenListToSexprs (DotToken :: token :: RparenToken :: tokens) = *)
-(*         tokenListToSexpr([token]) :: tokenListToSexprs(tokens) *)
-(*       | tokenListToSexprs (token :: tokens) = *)
-(*         let val sexprAndRest = slurpSexpr(token::tokens, [], 0) *)
-(*         in *)
-(*             tokenListToSexpr((#1 sexprAndRest)) :: *)
-(*             tokenListToSexprs((#2 sexprAndRest)) *)
-(*         end *)
-(* (* | tokenListToSexprs err =  raise TokenListToSexprError(err)(* [Void, Void] *) *) *)
 
-(*       (* | tokenListToSexpr (LparenToken :: token1 :: token2 :: tokens) = (*list*) *) *)
-(*       (*   Pair(tokenListToSexpr [token1], tokenListToSexpr (LparenToken :: *) *)
-(*       (*                                   token2 :: tokens)) *) *)
-(*       (* | tokenListToSexpr (VectorToken :: tokens) = *) *)
-(* (*   Vector(tokenListToSexprs tokens) (* vector *) *) *)
-(* in *)
-)
