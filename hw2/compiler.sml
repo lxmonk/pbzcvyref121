@@ -251,6 +251,7 @@ sig
     val stringToPE : string -> Expr;
     val stringToPEs : string -> Expr list;
     val parse : Sexpr -> Expr;  (* TODO: FIXME!! *)
+    val createNestedIfs : Sexpr list -> Expr;  (* TODO: FIXME!! *)
 end;
 
 exception NotAList of Sexpr;
@@ -454,6 +455,7 @@ struct
 exception MissingFeatureException;
 exception ErrorTypingLamb;
 exception ErrorReservedWordUsedImproperly;
+exception BadAndExpression;
           
 val reservedSymbols = ["and", "begin", "cond", "define", "else",
                        "if", "lambda", "let", "let*", "letrec",
@@ -475,9 +477,7 @@ fun lambtype (Nil : Sexpr) = Sim []
   | lambtype (Symbol(str)) = Vard(str)
   | lambtype (_ : Sexpr) = raise ErrorTypingLamb;
 
-(* fun packageAsSeq ([sexpr]) = sexpr *)
-(*   | packageAsSeq (sexprs as [sexpr::s]) = Pair(Symbol("begin"),; *)
-                             
+
 (* local *)
     fun parse Void = Const(Void)
       | parse Nil = Const(Nil)
@@ -521,13 +521,35 @@ fun lambtype (Nil : Sexpr) = Sim []
                                          Nil)))))
       | parse (Pair(Symbol("begin"), body)) =
         (case (body) of
-             (Pair (b, Nil)) => parse(b)
+             Nil => Const(Void)
+           | (Pair (b, Nil)) => parse(b)
            | (bod as Pair(p1, p2)) => Seq(map parse (pairsToList bod))
            | _ => parse (body))
+      | parse (Pair(Symbol("or"), elements)) =
+        (case elements of
+             Nil => Or([])
+           | _ => Or(map parse (pairsToList elements)))
+      | parse (Pair(Symbol("and"), elements)) =
+        (case elements of
+             Nil => Const(Bool(true))
+           | _ => createNestedIfs (pairsToList elements))
+      | parse (Pair(Symbol("set!"), Pair(var, Pair(value, Nil)))) =
+        Set(parse(var), parse(value))
+
+      (* these are always the last two lines *)
       | parse (Pair(sym as Symbol(operator), operands)) =
         App(parse(sym), map parse (pairsToList operands))
 
-      | parse err = (print (sexprToString err); raise MissingFeatureException)
+      | parse err = (print (sexprToString err); raise
+                         MissingFeatureException) (* FIXME!! *)
+    and createNestedIfs [sexpr] = If(parse(sexpr), parse(sexpr),
+                                     Const(Bool(false)))
+      | createNestedIfs (sNextToLast::[sLast]) =
+        If(parse(sNextToLast), parse(sLast), Const(Bool(false)))
+      | createNestedIfs (sexpr::sexprs) =
+        If(parse(sexpr), createNestedIfs(sexprs), Const(Bool(false)))
+      | createNestedIfs _ = raise BadAndExpression
+    and createCond
 (* in *)
 val stringToPE = fn str => (* Var("not implemented") *)
                     let val sexpr = Reader.stringToSexpr(str)
