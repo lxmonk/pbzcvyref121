@@ -511,14 +511,15 @@ fun lambtype (Nil : Sexpr) = Sim []
       | parse (Pair(Symbol("if"), Pair(test, Pair(dit, Pair(dif, Nil))))) =
         If(parse(test), parse(dit), parse(dif))
       | parse (Pair(Symbol("define"), Pair(sym as Symbol(defined_symbol),
-                                           Pair(definition, Nil)))) =
-        Def(parse(sym), parse(definition))
-      | parse (Pair(def as Symbol("define"),
+                                           definition))) =
+        Def(parse(sym), parse(Pair(Symbol("begin"), definition)))
+      | parse (Pair(def as Symbol("define"),    (* MIT define *)
                     Pair(Pair(sym as Symbol(defined_symbol), vars),
-                         bodyNil as Pair(body, Nil)))) =
-        parse (Pair(def, Pair(sym, (Pair(Pair(Symbol("lambda"),
-                                              Pair(vars, bodyNil)),
-                                         Nil)))))
+                         body))) =
+        parse (Pair(def, Pair(sym, Pair(Pair(Symbol("lambda"),
+                                             Pair(vars,
+                                                  Pair(body, Nil))),
+                                        Nil))))
       | parse (Pair(Symbol("begin"), body)) =
         (case (body) of
              Nil => Const(Void)
@@ -535,7 +536,8 @@ fun lambtype (Nil : Sexpr) = Sim []
            | _ => createNestedIfs (pairsToList elements))
       | parse (Pair(Symbol("set!"), Pair(var, Pair(value, Nil)))) =
         Set(parse(var), parse(value))
-
+      | parse(Pair(Symbol("cond"), bodies)) =
+        createCond(bodies)
       (* these are always the last two lines *)
       | parse (Pair(sym as Symbol(operator), operands)) =
         App(parse(sym), map parse (pairsToList operands))
@@ -549,7 +551,16 @@ fun lambtype (Nil : Sexpr) = Sim []
       | createNestedIfs (sexpr::sexprs) =
         If(parse(sexpr), createNestedIfs(sexprs), Const(Bool(false)))
       | createNestedIfs _ = raise BadAndExpression
-    and createCond
+    and createCond (Pair(Pair(Symbol("else"),body), _)) =
+        parse(Pair(Symbol("begin"), body))       (* else clause *)  
+      | createCond (Pair(Pair(test, body),Nil)) =
+        (* last (but NOT else!!) clause *)
+        If(parse(test), parse(Pair(Symbol("begin"),body)),
+           Const(Void))
+      | createCond (Pair(Pair(test, body),nextRibs)) =
+        If(parse(test), parse(Pair(Symbol("begin"), body)),
+          createCond(nextRibs))
+        
 (* in *)
 val stringToPE = fn str => (* Var("not implemented") *)
                     let val sexpr = Reader.stringToSexpr(str)
