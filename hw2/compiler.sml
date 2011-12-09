@@ -456,6 +456,7 @@ exception MissingFeatureException;
 exception ErrorTypingLamb;
 exception ErrorReservedWordUsedImproperly;
 exception BadAndExpression;
+exception NewLambdaMark;
           
 val reservedSymbols = ["and", "begin", "cond", "define", "else",
                        "if", "lambda", "let", "let*", "letrec",
@@ -477,7 +478,16 @@ fun lambtype (Nil : Sexpr) = Sim []
   | lambtype (Symbol(str)) = Vard(str)
   | lambtype (_ : Sexpr) = raise ErrorTypingLamb;
 
+(* fun breakLets (Pair(ribs, applic)) = *)
+(*     let val vars = getVars(ribs) *)
+(*     in *)
+(*         let val vals = getVals(ribs) *)
+(*         in *)
+(*             (vars, vals, applic) *)
+(*         end; *)
+(*     end;; *)
 
+    
 (* local *)
     fun parse Void = Const(Void)
       | parse Nil = Const(Nil)
@@ -502,10 +512,21 @@ fun lambtype (Nil : Sexpr) = Sim []
       | parse (Pair(Symbol("quote"), Pair(sexpr,Nil))) = Const(sexpr)
       | parse (Pair(Symbol("lambda"), Pair(vars,Pair(body,Nil)))) =
         (case lambtype(vars) of
-             Sim(varlist) => Abs(varlist,parse(Pair(Symbol("begin"),body)))
-           | Opt(vars, var) => AbsOpt(vars, var,
-                                      parse(Pair(Symbol("begin"), body)))
-           | Vard(var) => AbsVar(var, parse(Pair(Symbol("begin"), body))))
+             Sim(varlist) =>
+             Abs(varlist,parse(Pair(Symbol("begin"),Pair(body, Nil))))
+           | Opt(vars, var) =>
+             AbsOpt(vars, var, parse(Pair(Symbol("begin"), Pair(body,
+                                                                Nil))))
+           | Vard(var) =>
+             AbsVar(var, parse(Pair(Symbol("begin"), Pair(body, Nil)))))
+      | parse (Pair(Symbol("lambda"), Pair(vars,body))) =
+        (case lambtype(vars) of
+             Sim(varlist) =>
+             Abs(varlist,parse(Pair(Symbol("begin"),body)))
+           | Opt(vars, var) =>
+             AbsOpt(vars, var, parse(Pair(Symbol("begin"), body)))
+           | Vard(var) =>
+             AbsVar(var, parse(Pair(Symbol("begin"), body))))
       | parse (Pair(Symbol("if"), Pair(test, Pair(dit,Nil)))) =
         parse (Pair(Symbol("if"), Pair(test, Pair(dit, Pair(Void, Nil)))))
       | parse (Pair(Symbol("if"), Pair(test, Pair(dit, Pair(dif, Nil))))) =
@@ -536,8 +557,19 @@ fun lambtype (Nil : Sexpr) = Sim []
            | _ => createNestedIfs (pairsToList elements))
       | parse (Pair(Symbol("set!"), Pair(var, Pair(value, Nil)))) =
         Set(parse(var), parse(value))
-      | parse(Pair(Symbol("cond"), bodies)) =
+      | parse (Pair(Symbol("cond"), bodies)) =
         createCond(bodies)
+      (* | parse (Pair(Symbol("let"),lets)) = *)
+      (*   let val (vars, vals, bodies) = breakLets(lets) *)
+      (*   in *)
+      (*       parse(Pair(Pair(Symbol("lambda"), *)
+      (*                       Pair(vars,Pair(Pair(Symbol("begin"), *)
+      (*                                           bodies), *)
+      (*                                      Nil))),Nil)) *)
+      (*   end; *)
+
+
+        
       (* these are always the last two lines *)
       | parse (Pair(sym as Symbol(operator), operands)) =
         App(parse(sym), map parse (pairsToList operands))
@@ -559,7 +591,8 @@ fun lambtype (Nil : Sexpr) = Sim []
            Const(Void))
       | createCond (Pair(Pair(test, body),nextRibs)) =
         If(parse(test), parse(Pair(Symbol("begin"), body)),
-          createCond(nextRibs))
+           createCond(nextRibs))
+
         
 (* in *)
 val stringToPE = fn str => (* Var("not implemented") *)
