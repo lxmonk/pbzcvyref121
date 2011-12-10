@@ -461,6 +461,8 @@ exception LetGetVarsError;
 exception BreakLetsError;
 exception BadCondExpression;
 exception LetStarError;
+exception CreateNestedLetsError;
+exception InterlaceError;
           
 val reservedSymbols = ["and", "begin", "cond", "define", "else",
                        "if", "lambda", "let", "let*", "letrec",
@@ -486,7 +488,8 @@ fun lambtype (Nil : Sexpr) = Sim []
 fun interlace (Pair(lastVar, Nil), const) =
     Pair(Pair(lastVar, Pair(const, Nil)), Nil)
   | interlace (Pair(var, vars), const) =
-    Pair(Pair(var, Pair(const, Nil)), interlace(vars, const));
+    Pair(Pair(var, Pair(const, Nil)), interlace(vars, const))
+  | interlace _ = raise InterlaceError;
 
 
 
@@ -588,20 +591,21 @@ fun interlace (Pair(lastVar, Nil), const) =
                   parse(exp)
              end
            | _ => raise LetStarError)
+      | parse (Pair(Symbol("letrec"), bod as Pair(Nil, applic))) =
+        parse(Pair(Symbol("begin"), applic))
       | parse (Pair(Symbol("letrec"), bod as Pair(ribs, applic))) =
         let val vars = (#1 (getVars(ribs, [], [])))
             val newRibs = interlace(vars, Void)
             val sets = (listToPairs ((map (fn el => Pair(Symbol("set!"), el))
                             (pairsToList ribs)), Nil))
         in
-            (print ("newRibs: " ^ (sexprToString newRibs) ^ "\n\n");
-             parse(Pair(Symbol("let"),
-                        Pair(newRibs,
-                             Pair(Pair(Symbol("begin"),
-                                       sets),
-                                  Pair(Pair(Pair(Symbol("lambda"),
-                                                 Pair(Nil, applic)),
-                                            Nil), Nil))))))
+            parse(Pair(Symbol("let"),
+                       Pair(newRibs,
+                            Pair(Pair(Symbol("begin"),
+                                      sets),
+                                 Pair(Pair(Pair(Symbol("lambda"),
+                                                Pair(Nil, applic)),
+                                           Nil), Nil)))))
         end
 
          
@@ -621,7 +625,8 @@ fun interlace (Pair(lastVar, Nil), const) =
         Pair(Pair(Symbol("let"), Pair(Pair(lastRib, Nil), applic)), Nil)
       | createNestedLets (Pair(rib, ribs), applic) =
         Pair(Pair(Symbol("let"), Pair(Pair(rib, Nil),
-                                 createNestedLets(ribs, applic))), Nil)
+                                      createNestedLets(ribs, applic))), Nil)
+        | createNestedLets _ = raise CreateNestedLetsError
     and createNestedIfs [sexpr] = If(parse(sexpr), parse(sexpr),
                                      Const(Bool(false)))
       | createNestedIfs (sNextToLast::[sLast]) =
