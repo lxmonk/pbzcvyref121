@@ -15,12 +15,16 @@
         (else (append (flatten (car x))
                       (flatten (cdr x))))))
 
+
+
+
+
 (define (insert-out full-instruction dest-level outlist)
   (let ((line (car outlist))
         (lines (cdr outlist)))
     (cond ((= 0 dest-level) (cons (cons full-instruction line) lines))
           ((and (= 1 dest-level) (null? lines))
-           (append outlist (list full-instruction)))
+           (append outlist (list (list full-instruction))))
           (else (cons line (insert-out full-instruction
                                        (1- dest-level)
                                        lines))))))
