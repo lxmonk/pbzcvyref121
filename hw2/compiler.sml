@@ -491,7 +491,12 @@ fun interlace (Pair(lastVar, Nil), const) =
     Pair(Pair(var, Pair(const, Nil)), interlace(vars, const))
   | interlace _ = raise InterlaceError;
 
-
+fun listOfSexprs ([]) = []
+  | listOfSexprs (sexprs) =
+    let val sexprAndRest = slurpSexpr(sexprs)
+    in
+        (#1 sexprAndRest) :: listOfSexprs(#2 sexprAndRest)
+    end
 
     
 
@@ -519,8 +524,10 @@ fun interlace (Pair(lastVar, Nil), const) =
       | parse (Pair(Symbol("quote"), Pair(b as Bool(bo), Nil))) = Const(b)
       | parse (Pair(Symbol("quote"), Pair(Nil, Nil))) = Const(Nil)
       | parse (Pair(Symbol("quote"), Pair(sexpr,Nil))) = Const(sexpr)
-      | parse (Pair(Symbol("lambda"), Pair(vars,Pair(body,Nil)))) =
-        (case lambtype(vars) of
+      | parse (Pair(Symbol("lambda"), d as Pair(vars,Pair(body,Nil)))) =
+        ((print ("lambda: " ^ (sexprToString d) ^ "\n\n"));
+         (case 
+         (case lambtype(vars) of
              Sim(varlist) =>
              Abs(varlist,parse(Pair(Symbol("begin"),Pair(body, Nil))))
            | Opt(vars, var) =>
@@ -528,14 +535,18 @@ fun interlace (Pair(lastVar, Nil), const) =
                                                                 Nil))))
            | Vard(var) =>
              AbsVar(var, parse(Pair(Symbol("begin"), Pair(body, Nil)))))
-      | parse (Pair(Symbol("lambda"), Pair(vars,body))) =
+         )
+        )
+      | parse (Pair(Symbol("lambda"), d as Pair(vars,body))) =
+        ((print ("lambda: " ^ (sexprToString d) ^ "\n\n"));
         (case lambtype(vars) of
-             Sim(varlist) =>
+             Sim(varlist) => 
              Abs(varlist,parse(Pair(Symbol("begin"),body)))
            | Opt(vars, var) =>
              AbsOpt(vars, var, parse(Pair(Symbol("begin"), body)))
            | Vard(var) =>
              AbsVar(var, parse(Pair(Symbol("begin"), body))))
+        )
       | parse (Pair(Symbol("if"), Pair(test, Pair(dit,Nil)))) =
         parse (Pair(Symbol("if"), Pair(test, Pair(dit, Pair(Void, Nil)))))
       | parse (Pair(Symbol("if"), Pair(test, Pair(dit, Pair(dif, Nil))))) =
@@ -573,10 +584,12 @@ fun interlace (Pair(lastVar, Nil), const) =
       | parse (Pair(Symbol("let"),lets)) =
         let val brokenLet = breakLets(lets)
         in
-            parse(Pair(Pair(Symbol("lambda"),
-                            Pair((#1 brokenLet),
-                                 Pair(Pair(Symbol("begin"), (#3 brokenLet)),
-                                      Nil))), (#2 brokenLet)))
+            parse(
+            Pair(Pair(Symbol("lambda"),
+                      Pair((#1 brokenLet),
+                           Pair(Pair(Symbol("begin"),
+                                     (#3 brokenLet)),
+                                Nil))), (#2 brokenLet)))
         end
       | parse (Pair(Symbol("let*"), lets)) =
         (case lets of
@@ -584,12 +597,9 @@ fun interlace (Pair(lastVar, Nil), const) =
            | Pair(Pair(onlyRib, Nil), applic) => (* let* of depth 1 *)
              parse (Pair(Symbol("let"), lets))
            | Pair(Pair(rib, ribs), applic) =>
-             let val exp = Pair(Symbol("let"),
-                                Pair(Pair(rib, Nil),
-                                     createNestedLets(ribs, applic)))
-             in
-                  parse(exp)
-             end
+             parse(Pair(Symbol("let"),
+                        Pair(Pair(rib, Nil),
+                             createNestedLets(ribs, applic))))
            | _ => raise LetStarError)
       | parse (Pair(Symbol("letrec"), bod as Pair(Nil, applic))) =
         parse(Pair(Symbol("begin"), applic))
@@ -607,11 +617,6 @@ fun interlace (Pair(lastVar, Nil), const) =
                                                 Pair(Nil, applic)),
                                            Nil), Nil)))))
         end
-
-         
-                
-
-        
       (* these are always the last two lines *)
       | parse (Pair(sym as Symbol(operator), operands)) =
         App(parse(sym), map parse (pairsToList operands))
@@ -668,7 +673,12 @@ val stringToPE = fn str => (* Var("not implemented") *)
                     in
                         parse(sexpr)
                     end
-val stringToPEs = fn str => [Var("not implemented"), Var("yet!")]
+val stringToPEs = fn str =>
+                     let val sexprs = Reader.stringToSexpr(str)
+                         val sexprsList = sexprsToList(sexprs)
+                     in
+                         map parse sexprsList
+                     end
 (* end; (* of local funcs *) *)
 end; (* of structure TagParser *)
 
