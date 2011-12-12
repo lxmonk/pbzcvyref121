@@ -101,6 +101,7 @@ signature READER =
 sig
     val stringToSexpr : string -> Sexpr;
     val stringToSexprs : string -> Sexpr list;
+    val tokensToSexprs : SchemeToken list -> Sexpr;
 end;
 
 fun sexprToString'(Void) = "#<void>"
@@ -371,7 +372,7 @@ end;
 end; (* of structure Scanner *)
 
 fun listToPairs ([], b) = b
-  | listToPairs (a::s, b) = (* (print "listToPairs!!"; *)
+  | listToPairs (a::s, b) = 
     Pair(a, (listToPairs(s, b)));
 
     
@@ -444,6 +445,11 @@ val stringToSexprs = fn str =>
                                  (ret : Sexpr list, []) => ret
                                | _ => raise BadSExpression(schemeTokensList))
                         end
+val  tokensToSexprs = fn schemeTokensList =>
+                        (case (gs schemeTokensList) of
+                             (SOME(ret) : Sexpr option, []) => ret
+                           | _ => raise BadSExpression(schemeTokensList))
+                        
 end; (* of local functions *)
 end; (* of structure Reader *)
 
@@ -471,9 +477,10 @@ val reservedSymbols = ["and", "begin", "cond", "define", "else",
 fun reservedWord(str) =
     ormap (fn rs => (String.compare(rs, str) = EQUAL))
           reservedSymbols;
+
 datatype lamb = Sim of string list
-             | Opt of (string list * string)
-             | Vard of string;
+              | Opt of (string list * string)
+              | Vard of string;
 
 fun lambtype (Nil : Sexpr) = Sim []
   | lambtype (Pair(Symbol(str), rest)) =
@@ -482,8 +489,7 @@ fun lambtype (Nil : Sexpr) = Sim []
        | Opt(vars, var) => Opt((str::vars), var)
        | Vard(var) => Opt([str],var))
   | lambtype (Symbol(str)) = Vard(str)
-  | lambtype (err : Sexpr) = (print (sexprToString err);
-                            raise ErrorTypingLamb);
+  | lambtype (err : Sexpr) = raise ErrorTypingLamb;
 
 fun interlace (Pair(lastVar, Nil), const) =
     Pair(Pair(lastVar, Pair(const, Nil)), Nil)
@@ -491,195 +497,199 @@ fun interlace (Pair(lastVar, Nil), const) =
     Pair(Pair(var, Pair(const, Nil)), interlace(vars, const))
   | interlace _ = raise InterlaceError;
 
+fun slurpSexpr(tokens, sexprSoFar, ~1) =
+    raise BadSExpression(rev sexprSoFar)
+  | slurpSexpr ([], sexprSoFar, openParens) =
+    raise BadSExpression(rev sexprSoFar)
+  | slurpSexpr (LparenToken :: tokens, sexprSoFar, openParens) =
+    slurpSexpr (tokens, LparenToken::sexprSoFar, openParens + 1)
+  | slurpSexpr (VectorToken :: tokens, sexprSoFar, openParens) =
+    slurpSexpr (tokens, VectorToken::sexprSoFar, openParens + 1)
+  | slurpSexpr (RparenToken :: tokens, sexprSoFar, 1) =
+    (rev (RparenToken::sexprSoFar), tokens)
+  | slurpSexpr (RparenToken :: tokens, sexprSoFar, openParens) =
+    (* not balanced yet *)
+    slurpSexpr (tokens, RparenToken::sexprSoFar, openParens - 1)
+  | slurpSexpr (token :: tokens, sexprSoFar, 0) =
+    ([token], tokens)
+  | slurpSexpr (token :: tokens, sexprSoFar, openParens) =
+    slurpSexpr (tokens, token::sexprSoFar, openParens); (* inside Sexpr *)
+
 fun listOfSexprs ([]) = []
   | listOfSexprs (sexprs) =
-    let val sexprAndRest = slurpSexpr(sexprs)
+    let val sexprAndRest = slurpSexpr(sexprs, [], 0)
     in
         (#1 sexprAndRest) :: listOfSexprs(#2 sexprAndRest)
+    end    
+
+fun parse Void = Const(Void)
+  | parse Nil = Const(Nil)
+  | parse (Vector(sexprs)) = Const(Vector(sexprs)) (* FIXME! *)
+  | parse (str as String(s)) = Const(str)
+  | parse (n as Number(num)) = Const(n)
+  | parse (b as Bool(bool)) = Const(b)
+  | parse (c as Char(ch)) = Const(c)
+  | parse (Symbol(sym)) = (case (reservedWord(sym)) of
+                               false => Var(sym)
+                             | true =>
+                               raise ErrorReservedWordUsedImproperly)
+  | parse (Pair(Symbol("quote"), Pair(s as Symbol(sym),Nil))) =
+    Const(s)
+  | parse (Pair(Symbol("quote"), Pair(n as Number(num),Nil))) =
+    Const(n)
+  | parse (Pair(Symbol("quote"), Pair(v as Vector(elements), Nil))) =
+    Const(v)
+  | parse (Pair(Symbol("quote"), Pair(c as Char(ch), Nil))) = Const(c)
+  | parse (Pair(Symbol("quote"), Pair(b as Bool(bo), Nil))) = Const(b)
+  | parse (Pair(Symbol("quote"), Pair(Nil, Nil))) = Const(Nil)
+  | parse (Pair(Symbol("quote"), Pair(sexpr,Nil))) = Const(sexpr)
+  | parse (Pair(Symbol("lambda"), d as Pair(vars,Pair(body,Nil)))) =
+    (case lambtype(vars) of
+         Sim(varlist) =>
+         Abs(varlist,parse(Pair(Symbol("begin"),Pair(body, Nil))))
+       | Opt(vars, var) =>
+         AbsOpt(vars, var, parse(Pair(Symbol("begin"), Pair(body,
+                                                            Nil))))
+       | Vard(var) =>
+         AbsVar(var, parse(Pair(Symbol("begin"), Pair(body, Nil)))))
+  | parse (Pair(Symbol("lambda"), d as Pair(vars,body))) =
+    (case lambtype(vars) of
+         Sim(varlist) => 
+         Abs(varlist,parse(Pair(Symbol("begin"),body)))
+       | Opt(vars, var) =>
+         AbsOpt(vars, var, parse(Pair(Symbol("begin"), body)))
+       | Vard(var) =>
+         AbsVar(var, parse(Pair(Symbol("begin"), body))))
+  | parse (Pair(Symbol("if"), Pair(test, Pair(dit,Nil)))) =
+    parse (Pair(Symbol("if"), Pair(test, Pair(dit, Pair(Void, Nil)))))
+  | parse (Pair(Symbol("if"), Pair(test, Pair(dit, Pair(dif, Nil))))) =
+    If(parse(test), parse(dit), parse(dif))
+  | parse (Pair(Symbol("define"), Pair(sym as Symbol(defined_symbol),
+                                       definition))) =
+     Def(parse(sym), parse(Pair(Symbol("begin"), definition)))
+  | parse (Pair(def as Symbol("define"),    (* MIT define *)
+                Pair(Pair(sym as Symbol(defined_symbol), vars),
+                     Pair(body, Nil)))) =
+    parse (Pair(def, Pair(sym, Pair(Pair(Symbol("lambda"),
+                                         Pair(vars,
+                                              Pair(body, Nil))),
+                                    Nil))))
+  | parse (Pair(Symbol("begin"), body)) =
+    (case (body) of
+         Nil => Const(Void)
+       | (Pair (b, Nil)) => parse(b)
+       | (bod as Pair(p1, p2)) => Seq(map parse (pairsToList bod))
+       | _ => parse (body))
+  | parse (Pair(Symbol("or"), elements)) =
+    (case elements of
+         Nil => Or([])
+       | _ => Or(map parse (pairsToList elements)))
+  | parse (Pair(Symbol("and"), elements)) =
+    (case elements of
+         Nil => Const(Bool(true))
+       | _ => createNestedIfs (pairsToList elements))
+  | parse (Pair(Symbol("set!"), Pair(var, Pair(value, Nil)))) =
+    Set(parse(var), parse(value))
+  | parse (Pair(Symbol("cond"), bodies)) =
+    createCond(bodies)
+  | parse (Pair(Symbol("let"),Pair(Nil, applic))) =
+    parse(Pair(Symbol("begin"), applic))
+  | parse (Pair(Symbol("let"),lets)) =
+    let val brokenLet = breakLets(lets)
+    in
+        parse(
+        Pair(Pair(Symbol("lambda"),
+                  Pair((#1 brokenLet),
+                       Pair(Pair(Symbol("begin"),
+                                 (#3 brokenLet)),
+                            Nil))), (#2 brokenLet)))
     end
-
-    
-
-
-    
-(* local *)
-    fun parse Void = Const(Void)
-      | parse Nil = Const(Nil)
-      | parse (Vector(sexprs)) = Const(Vector(sexprs)) (* FIXME! *)
-      | parse (str as String(s)) = Const(str)
-      | parse (n as Number(num)) = Const(n)
-      | parse (b as Bool(bool)) = Const(b)
-      | parse (c as Char(ch)) = Const(c)
-      | parse (Symbol(sym)) = (case (reservedWord(sym)) of
-                                   false => Var(sym)
-                                 | true => (print sym; (* FIXME *)
-                                   raise ErrorReservedWordUsedImproperly))
-      | parse (Pair(Symbol("quote"), Pair(s as Symbol(sym),Nil))) =
-        Const(s)
-      | parse (Pair(Symbol("quote"), Pair(n as Number(num),Nil))) =
-        Const(n)
-      | parse (Pair(Symbol("quote"), Pair(v as Vector(elements), Nil))) =
-        Const(v)
-      | parse (Pair(Symbol("quote"), Pair(c as Char(ch), Nil))) = Const(c)
-      | parse (Pair(Symbol("quote"), Pair(b as Bool(bo), Nil))) = Const(b)
-      | parse (Pair(Symbol("quote"), Pair(Nil, Nil))) = Const(Nil)
-      | parse (Pair(Symbol("quote"), Pair(sexpr,Nil))) = Const(sexpr)
-      | parse (Pair(Symbol("lambda"), d as Pair(vars,Pair(body,Nil)))) =
-        ((print ("lambda: " ^ (sexprToString d) ^ "\n\n"));
-         (case 
-         (case lambtype(vars) of
-             Sim(varlist) =>
-             Abs(varlist,parse(Pair(Symbol("begin"),Pair(body, Nil))))
-           | Opt(vars, var) =>
-             AbsOpt(vars, var, parse(Pair(Symbol("begin"), Pair(body,
-                                                                Nil))))
-           | Vard(var) =>
-             AbsVar(var, parse(Pair(Symbol("begin"), Pair(body, Nil)))))
-         )
-        )
-      | parse (Pair(Symbol("lambda"), d as Pair(vars,body))) =
-        ((print ("lambda: " ^ (sexprToString d) ^ "\n\n"));
-        (case lambtype(vars) of
-             Sim(varlist) => 
-             Abs(varlist,parse(Pair(Symbol("begin"),body)))
-           | Opt(vars, var) =>
-             AbsOpt(vars, var, parse(Pair(Symbol("begin"), body)))
-           | Vard(var) =>
-             AbsVar(var, parse(Pair(Symbol("begin"), body))))
-        )
-      | parse (Pair(Symbol("if"), Pair(test, Pair(dit,Nil)))) =
-        parse (Pair(Symbol("if"), Pair(test, Pair(dit, Pair(Void, Nil)))))
-      | parse (Pair(Symbol("if"), Pair(test, Pair(dit, Pair(dif, Nil))))) =
-        If(parse(test), parse(dit), parse(dif))
-      | parse (Pair(Symbol("define"), Pair(sym as Symbol(defined_symbol),
-                                           definition))) =
-        Def(parse(sym), parse(Pair(Symbol("begin"), definition)))
-      | parse (Pair(def as Symbol("define"),    (* MIT define *)
-                    Pair(Pair(sym as Symbol(defined_symbol), vars),
-                         body))) =
-        parse (Pair(def, Pair(sym, Pair(Pair(Symbol("lambda"),
-                                             Pair(vars,
-                                                  Pair(body, Nil))),
-                                        Nil))))
-      | parse (Pair(Symbol("begin"), body)) =
-        (case (body) of
-             Nil => Const(Void)
-           | (Pair (b, Nil)) => parse(b)
-           | (bod as Pair(p1, p2)) => Seq(map parse (pairsToList bod))
-           | _ => parse (body))
-      | parse (Pair(Symbol("or"), elements)) =
-        (case elements of
-             Nil => Or([])
-           | _ => Or(map parse (pairsToList elements)))
-      | parse (Pair(Symbol("and"), elements)) =
-        (case elements of
-             Nil => Const(Bool(true))
-           | _ => createNestedIfs (pairsToList elements))
-      | parse (Pair(Symbol("set!"), Pair(var, Pair(value, Nil)))) =
-        Set(parse(var), parse(value))
-      | parse (Pair(Symbol("cond"), bodies)) =
-        createCond(bodies)
-      | parse (Pair(Symbol("let"),Pair(Nil, applic))) =
-        parse(Pair(Symbol("begin"), applic))
-      | parse (Pair(Symbol("let"),lets)) =
-        let val brokenLet = breakLets(lets)
-        in
-            parse(
-            Pair(Pair(Symbol("lambda"),
-                      Pair((#1 brokenLet),
-                           Pair(Pair(Symbol("begin"),
-                                     (#3 brokenLet)),
-                                Nil))), (#2 brokenLet)))
-        end
-      | parse (Pair(Symbol("let*"), lets)) =
-        (case lets of
-             Pair(Nil, applic) => parse(Pair(Symbol("begin"), applic))
-           | Pair(Pair(onlyRib, Nil), applic) => (* let* of depth 1 *)
-             parse (Pair(Symbol("let"), lets))
-           | Pair(Pair(rib, ribs), applic) =>
-             parse(Pair(Symbol("let"),
-                        Pair(Pair(rib, Nil),
-                             createNestedLets(ribs, applic))))
-           | _ => raise LetStarError)
-      | parse (Pair(Symbol("letrec"), bod as Pair(Nil, applic))) =
-        parse(Pair(Symbol("begin"), applic))
-      | parse (Pair(Symbol("letrec"), bod as Pair(ribs, applic))) =
-        let val vars = (#1 (getVars(ribs, [], [])))
-            val newRibs = interlace(vars, Void)
-            val sets = (listToPairs ((map (fn el => Pair(Symbol("set!"), el))
-                            (pairsToList ribs)), Nil))
-        in
-            parse(Pair(Symbol("let"),
-                       Pair(newRibs,
-                            Pair(Pair(Symbol("begin"),
-                                      sets),
-                                 Pair(Pair(Pair(Symbol("lambda"),
-                                                Pair(Nil, applic)),
-                                           Nil), Nil)))))
-        end
-      (* these are always the last two lines *)
-      | parse (Pair(sym as Symbol(operator), operands)) =
-        App(parse(sym), map parse (pairsToList operands))
-      | parse (Pair(operator, operands)) =
-        App(parse(operator), map parse (pairsToList operands))
-      (* | parse err = (print (sexprToString err); raise *)
-    (*                    MissingFeatureException) (* FIXME!! *) *)
-    and createNestedLets (Pair(lastRib as Pair(variable,
-                                               Pair(value, Nil)),
-                               Nil), applic) =
-        Pair(Pair(Symbol("let"), Pair(Pair(lastRib, Nil), applic)), Nil)
-      | createNestedLets (Pair(rib, ribs), applic) =
-        Pair(Pair(Symbol("let"), Pair(Pair(rib, Nil),
-                                      createNestedLets(ribs, applic))), Nil)
-        | createNestedLets _ = raise CreateNestedLetsError
-    and createNestedIfs [sexpr] = If(parse(sexpr), parse(sexpr),
-                                     Const(Bool(false)))
-      | createNestedIfs (sNextToLast::[sLast]) =
-        If(parse(sNextToLast), parse(sLast), Const(Bool(false)))
-      | createNestedIfs (sexpr::sexprs) =
-        If(parse(sexpr), createNestedIfs(sexprs), Const(Bool(false)))
-      | createNestedIfs _ = raise BadAndExpression
-    and createCond (Pair(Pair(Symbol("else"),body), _)) =
-        parse(Pair(Symbol("begin"), body))       (* else clause *)  
-      | createCond (Pair(Pair(test, body),Nil)) =
-        (* last (but NOT else!!) clause *)
-        If(parse(test), parse(Pair(Symbol("begin"),body)),
-           Const(Void))
-      | createCond (Pair(Pair(test, body),nextRibs)) =
-        If(parse(test), parse(Pair(Symbol("begin"), body)),
-           createCond(nextRibs))
-      | createCond _ = raise BadCondExpression
-    and breakLets (Pair(ribs, applic)) =
-        let val varsAndVals = getVars(ribs, [], [])
-        in
-            ((#1 varsAndVals), (#2 varsAndVals), applic)
-        end
-      | breakLets _ = raise BreakLetsError
-    and getVars (Pair(rib as Pair(variable, Pair(value, Nil)), Nil),
-                 varList, valList) =
-        (listToPairs (rev (variable :: varList), Nil),
-         listToPairs (rev (value :: valList), Nil))
-      | getVars (Pair(rib as Pair(variable, Pair(value, Nil)), ribs),
-                 varList, valList) =
-        getVars (ribs, variable :: varList, value :: valList)
-      | getVars (err, _, _) = (print (sexprToString err);
-                               raise LetGetVarsError
-                              )
-
+  | parse (Pair(Symbol("let*"), lets)) =
+    (case lets of
+         Pair(Nil, applic) => parse(Pair(Symbol("begin"), applic))
+       | Pair(Pair(onlyRib, Nil), applic) => (* let* of depth 1 *)
+         parse (Pair(Symbol("let"), lets))
+       | Pair(Pair(rib, ribs), applic) =>
+         parse(Pair(Symbol("let"),
+                    Pair(Pair(rib, Nil),
+                         createNestedLets(ribs, applic))))
+       | _ => raise LetStarError)
+  | parse (Pair(Symbol("letrec"), bod as Pair(Nil, applic))) =
+    parse(Pair(Symbol("begin"), applic))
+  | parse (Pair(Symbol("letrec"), bod as Pair(ribs, applic))) =
+    let val vars = (#1 (getVars(ribs, [], [])))
+        val newRibs = interlace(vars, Void)
+        val sets = (listToPairs ((map (fn el => Pair(Symbol("set!"), el))
+                                      (pairsToList ribs)), Nil))
+    in
+        parse(Pair(Symbol("let"),
+                   Pair(newRibs,
+                        Pair(Pair(Symbol("begin"),
+                                  sets),
+                             Pair(Pair(Pair(Symbol("lambda"),
+                                            Pair(Nil, applic)),
+                                       Nil), Nil)))))
+    end
+  (* these are always the last two lines *)
+  | parse (Pair(sym as Symbol(operator), operands)) =
+    App(parse(sym), map parse (pairsToList operands))
+  | parse (Pair(operator, operands)) =
+    App(parse(operator), map parse (pairsToList operands))
+and createNestedLets (Pair(lastRib as Pair(variable,
+                                           Pair(value, Nil)),
+                           Nil), applic) =
+    Pair(Pair(Symbol("let"), Pair(Pair(lastRib, Nil), applic)), Nil)
+  | createNestedLets (Pair(rib, ribs), applic) =
+    Pair(Pair(Symbol("let"), Pair(Pair(rib, Nil),
+                                  createNestedLets(ribs, applic))), Nil)
+  | createNestedLets _ = raise CreateNestedLetsError
+and createNestedIfs [sexpr] = If(parse(sexpr), parse(sexpr),
+                                 Const(Bool(false)))
+  | createNestedIfs (sNextToLast::[sLast]) =
+    If(parse(sNextToLast), parse(sLast), Const(Bool(false)))
+  | createNestedIfs (sexpr::sexprs) =
+    If(parse(sexpr), createNestedIfs(sexprs), Const(Bool(false)))
+  | createNestedIfs _ = raise BadAndExpression
+and createCond (Pair(Pair(Symbol("else"),body), _)) =
+    parse(Pair(Symbol("begin"), body))       (* else clause *)  
+  | createCond (Pair(Pair(test, body),Nil)) =
+    (* last (but NOT else!!) clause *)
+    If(parse(test), parse(Pair(Symbol("begin"),body)),
+       Const(Void))
+  | createCond (Pair(Pair(test, body),nextRibs)) =
+    If(parse(test), parse(Pair(Symbol("begin"), body)),
+       createCond(nextRibs))
+  | createCond _ = raise BadCondExpression
+and breakLets (Pair(ribs, applic)) =
+    let val varsAndVals = getVars(ribs, [], [])
+    in
+        ((#1 varsAndVals), (#2 varsAndVals), applic)
+    end
+  | breakLets _ = raise BreakLetsError
+and getVars (Pair(rib as Pair(variable, Pair(value, Nil)), Nil),
+             varList, valList) =
+    (listToPairs (rev (variable :: varList), Nil),
+     listToPairs (rev (value :: valList), Nil))
+  | getVars (Pair(rib as Pair(variable, Pair(value, Nil)), ribs),
+             varList, valList) =
+    getVars (ribs, variable :: varList, value :: valList)
+  | getVars (err, _, _) = raise LetGetVarsError
         
-(* in *)
 val stringToPE = fn str => (* Var("not implemented") *)
                     let val sexpr = Reader.stringToSexpr(str)
                     in
                         parse(sexpr)
                     end
 val stringToPEs = fn str =>
-                     let val sexprs = Reader.stringToSexpr(str)
-                         val sexprsList = sexprsToList(sexprs)
+                     let val tokensList = Scanner.stringToTokens str
+                         val schemeTokensListList =
+                             listOfSexprs tokensList
+                         val sexprsList =
+                             map Reader.tokensToSexprs schemeTokensListList
                      in
                          map parse sexprsList
                      end
-(* end; (* of local funcs *) *)
+
 end; (* of structure TagParser *)
 
 

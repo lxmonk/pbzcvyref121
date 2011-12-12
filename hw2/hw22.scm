@@ -1,9 +1,14 @@
+(print-graph #f) ; display circular structures
+(print-gensym #f) ; print gensym as g1234
+(case-sensitive #f) ; ditto
+(print-brackets #f) ; do not use brackets when pretty-printing
+
 (define nl newline)
 (define nop (lambda var (if #f (raise exception))))
 (define nop2 (lambda var (if #f (raise exception))))
 (define not-nil (lambda (el) (not (null? el))))
 (define (short-gensym) (gensym))
-  ;(string->symbol (symbol->string (gensym))))
+
 (define (map>2 f lst)
   (if (>= 2 (depth lst))
       (f lst)
