@@ -707,6 +707,7 @@ exception AbsOptBoxingException;
 exception AbsVarBoxingException;
 exception LookupError;
 exception LexicalWorkerError;
+exception AnnotateTCRunErr;
 
 fun inVarList (var, []) = NONE
   | inVarList (var, h::tl) =
@@ -788,7 +789,43 @@ fun run (pe as Const(_), inTP) = pe
     If((run (test, false)),
        (run (dit, inTP)),
        (run (dif, inTP)))
-;
+  | run (Seq([last]), inTP) =
+    Seq([(run(last, inTP))])
+  | run (Seq(lst), inTP) =
+    let val last = List.last(lst)
+        val len = List.length(lst)
+        val butlast = List.take(lst, len - 1)
+    in
+        Seq(((map (fn element => run(element, false)) butlast))  @ 
+            [run(last, inTP)])
+    end
+  | run (Or([last]), inTP) =
+    Or([(run(last, inTP))])
+  | run (Or(lst), inTP) =
+    let val last = List.last(lst)
+        val len = List.length(lst)
+        val butlast = List.take(lst, len - 1)
+    in
+        Or((map (fn element => (run(element, false)))
+                 butlast) @ [(run(last, inTP))])
+    end
+  | run (Set(e1, e2), inTP) =
+    Set(e1, run(e2, false))
+  | run (Def(e1, e2), inTP) =
+    Def(e1, run(e2, false))
+  | run (App(operator, operands), false) =
+    App((run (operator, false)),
+        (map (fn arg => run(arg, false)) operands))
+  | run (App(operator, operands), true) =
+    AppTP((run (operator, false)),
+          (map (fn arg => run(arg, false)) operands))
+  | run (Abs(vars, body), inTP) =
+    Abs(vars, run(body, true))
+  | run (AbsOpt(vars, extra, body), inTP) =
+    AbsOpt(vars, extra, run(body, true))
+  | run (AbsVar(var, body), inTP) =
+    AbsVar(var, run(body, true))
+  | run err = raise AnnotateTCRunErr;
 
 structure SemanticAnalysis : SEMANTIC_ANALYSIS =
 struct
@@ -820,15 +857,8 @@ fun boxSet (origExpr as Abs(vars, body)) =
     Def(boxSet e1, boxSet e2)
   | boxSet els = els ;  (* leave expr as it was - vars and consts *)
 
-fun annotateTC expr = run (expr true);
+fun annotateTC expr = run(expr, true);
 fun lexicalAddressing expr = lexicalWorker(expr, [[]]);
-fun analysis expr = raise NotYetImplemented; (* lexicalAddressing (annotateTC (boxSet expr)); *)
+fun analysis expr =  lexicalAddressing (annotateTC (boxSet expr));
     
 end; (* of struct SemanticAnalysis *)
-
-
-
-
-
-
-
