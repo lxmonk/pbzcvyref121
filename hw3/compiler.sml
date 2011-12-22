@@ -832,8 +832,9 @@ struct
 fun boxSet (origExpr as Abs(vars, body)) =
     (case findBangedVars(vars, body) of
          [] => origExpr
-       | [bangedvars] => boxVars(bangedvars, boxSet(body))
-       | _ => raise AbsBoxingException)
+       | bangedvars => boxVars(bangedvars, boxSet(body))
+    (* | _ => raise AbsBoxingException *)
+    )
   | boxSet (origExpr as AbsOpt(vars, opt, body)) =
     (case findBangedVars(vars, body) of
          [] => origExpr
