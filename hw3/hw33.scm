@@ -25,7 +25,6 @@
                                        ;;  an empty a-list.
     ;; here frequencies will be replaced by gensyms:
     (lambda (clean-dict)
-      ;; (display clean-dict) (newline)
       (replace-by-dict e clean-dict
         (lambda (new-e)
           `(let* ,(lets-from-dict clean-dict) ,new-e))
@@ -54,8 +53,6 @@
 (define (replace-by-dict e dict ret-rep ret-not)
   (let* ((keys (map car dict))
          (vals (map cadr dict)))
-    ;; (display `(replace-by-dict "\n\n" keys: " " ,keys "\n"
-    ;;             vals: " " ,vals "\n\n\n")) (newline)
     (letrec ((worker (lambda (keys vals e)
                        (if (null? keys) e
                            (worker (cdr keys) (cdr vals)
@@ -104,29 +101,17 @@
                                       (cons '()
                                         (list-range dict (1+ n)
                                           (length dict)))))
-             ;; (dont_care (begin (display `("\n\n" "dict-without-nth-line "
-             ;;                             ,dict-without-nth-line "\n\n"))
-             ;;                  (newline)))
              (new-dict (replacer key val dict-without-nth-line))
-             ;; (dontcare2 (begin (display `("\n\n" "new-dict "
-             ;;                             ,new-dict "\n\n"))
-             ;;                  (newline)))
-             (updated-new-dict (map (lambda (entry) (if (null? entry)
-                                                        `(,key ,val)
-                                                        entry))
-                                 new-dict))
-             ;; (dontcare3 (begin (display `("\n\n" "updated-new-dict "
-             ;;                             ,updated-new-dict "\n\n"))
-             ;;                  (newline)))
-             )
+             (updated-new-dict (map (lambda (entry)
+                                      (if (null? entry)
+                                          `(,key ,val)
+                                          entry))
+                                 new-dict)))
         (reference updated-new-dict (1+ n)))))
 
 
 (define (purge-dict dirty cont)
-  (let* ((clean-dict (expunge dirty '()))
-       ;; (dontcare (begin (display `("\n\n" "clean-dict: " ,clean-dict
-       ;;                             "\n")) (newline)))
-         )
+  (let* ((clean-dict (expunge dirty '())))
     (letrec ((change-detector
                (lambda (dict)
                  (let* ((replaced-dict-v1 (reference dict 0))
@@ -140,8 +125,6 @@
   (define (const? e)
     (or (symbol? e) (not (pair? e))
         (and (pair? e) (equal? 'quote (car e)))))
-       ; (null? e)  (and (pair? e) (null? (cdr e)))
-  ;; (trace create-freq-dict)
   (cond ((null? e) freq-dict)
         ((const? e) freq-dict)
         ((assoc e freq-dict)
@@ -173,6 +156,8 @@
                               (sort-step (cdr l))))))))
     (fix sort-step x)))
 
+
+;; me love them testings..
 
 ;; (cse '(+ 2 3))
 
