@@ -157,7 +157,7 @@
     (fix sort-step x)))
 
 
-;; me love them testings..
+;;; me love them testings..
 
 ;; (cse '(+ 2 3))
 
@@ -187,3 +187,4 @@
 ;; (cse '(list '(a b)
 ;;         (list '(a b) '(c d))
 ;;         (list '(a b) '(c d))))
+;; !!!
