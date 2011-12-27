@@ -695,6 +695,7 @@ end; (* of structure TagParser *)
 
 signature SEMANTIC_ANALYSIS =
 sig
+    (* val bangFinder : string list * Expr * string list -> string list *)
     val boxSet : Expr -> Expr;
     val annotateTC : Expr -> Expr;
     val lexicalAddressing : Expr -> Expr;
@@ -709,25 +710,6 @@ exception LookupError;
 exception LexicalWorkerError;
 exception AnnotateTCRunErr;
 
-fun inVarList (var, []) = NONE
-  | inVarList (var, h::tl) =
-    if var = h then SOME(var)
-    else
-        inVarList(var, tl);
-    
-fun bangFinder(vars, Const(s), banged) = banged
-  | bangFinder(vars, Set(VarBound(var, _, _), value), banged) =
-    (case (inVarList(var, vars)) of
-         NONE => banged
-       | SOME(var) => var :: banged)
-  | bangFinder(vars, Seq(exprLst), banged) =
-    raise NotYetImplemented
-  | bangFinder _ = raise NotYetImplemented;
-
-fun findBangedVars (vars, body) =
-    bangFinder(vars, body, []);
-    
-fun boxVars _ = raise NotYetImplemented;
 
 fun getIdx (el, [], n) = NONE
   | getIdx (el, h::tl, n) =
@@ -782,6 +764,7 @@ fun lexicalWorker (Var(name), symtab) =
   | lexicalWorker _ = raise LexicalWorkerError;
 
     print "\n\n\n\n\n\n\nTODO: PUT US ^ BACK IN!!\n\n\n\n\n\n\n";
+val prn = foldr (fn (a, b) => a ^ ", " ^ b) "";
 
 fun run (pe as Const(_), inTP) = pe
   | run (pe as Var(_), inTP) = pe
@@ -827,27 +810,152 @@ fun run (pe as Const(_), inTP) = pe
     AbsVar(var, run(body, true))
   | run err = raise AnnotateTCRunErr;
 
+
+fun inVarList (var, []) = (print ("inVarList: " ^ var ^
+                                  " not in.\n"); NONE)
+  | inVarList (var, h::tl) =
+    if var = h then SOME(var)
+    else
+        inVarList(var, tl);
+
+fun union ([] : string list list, result : string list) =
+    result
+  | union (([] :: lists : string list list), result) =
+    union (lists, result)
+  | union (((l : string) :: (lst : string list)) ::
+            (lists : string list list),
+            result) =
+    union(lst :: lists, l :: result)
+    
+fun unite ([], result) = result
+  | unite (l::lst, result) =
+    (case (inVarList(l, result)) of
+         NONE => unite(lst, l::result)
+       | SOME(l) => unite(lst, result))
+        
+
+    
+fun boxVars (strList : string list, expr : Expr) =
+    (print "boxVars\n"; raise NotYetImplemented);
+
+
+fun bangFinder (vars : string list, Const(s) : Expr,
+                banged : string list) =
+    banged 
+  | bangFinder(vars, Set(VarBound(var, _, _), value), banged) =
+    (print ("bangFinder/Set(VarBound) with vars: " ^
+            foldr (fn (a, b) => a ^ ", " ^ b) "" vars);
+    (case (inVarList(var, vars)) of
+         NONE => bangFinder (vars, value, banged)
+       | SOME(var) => var :: (bangFinder(vars, value,
+                                         banged)))
+    )
+  | bangFinder(vars, Set(exp, value), banged) =
+    unite(bangFinder(vars, exp, banged),
+          bangFinder(vars, value, banged))
+  | bangFinder(vars, Seq(exprLst), banged) =
+    let val allBangedList = map (fn expr =>
+                                    bangFinder(vars, expr,
+                                               []))
+                                exprLst
+    in
+        unite(union(allBangedList, []), banged)
+    end
+  | bangFinder (vars, If(test, dit, dif), banged) =
+    unite(union((map (fn expr => bangFinder(vars, expr,
+                                            []))
+                     [test, dit, dif]), []), banged)
+  | bangFinder (vars, Or(exprLst), banged) =
+    let val allBangedList = map (fn expr =>
+                                    bangFinder(vars, expr,
+                                               []))
+                                exprLst
+    in
+        unite(union(allBangedList, []), banged)
+    end
+  | bangFinder (vars, Def(e1, e2), banged) =
+    unite(bangFinder(vars, e1, banged),
+          bangFinder(vars, e2, banged))
+  | bangFinder (vars, Abs(args, body), banged) =
+    let val filteredVars = (print ("unfiltered vars:" ^ prn(vars) ^ "\nargs: " ^ prn(args) ^ "\n");
+            List.filter (fn (x : string) =>
+                            not (isSome(inVarList(x, args))))
+                        vars)
+        val dontcare = print("filteredVars: " ^
+                             (foldr (fn (a, b) => a ^ ", " ^ b)
+                                    "" filteredVars) ^ "\n")
+    in
+        bangFinder(filteredVars, body, banged)
+    end
+  | bangFinder (vars, AbsOpt(args, extra, body), banged) =
+    let val filteredVars =
+            List.filter (fn x : string =>
+                            not (isSome(inVarList(x, args))))
+                        vars
+    in
+        bangFinder(filteredVars, body : Expr, banged)
+    end
+  | bangFinder (vars, AbsVar(argList, body), banged) =
+    bangFinder (vars, body, banged)
+  | bangFinder (vars, exp as App(operator, operands), banged) =
+    (print ("bangFinder/App\n");
+    let val allBangedList = map (fn expr =>
+                                    bangFinder(vars, expr,
+                                               []))
+                                operands
+    in
+        unite(bangFinder(vars, operator, banged),
+              unite(union(allBangedList, banged), banged))
+    end)
+  | bangFinder (vars, AppTP(operator, operands), banged) =
+    let val allBangedList = map (fn expr =>
+                                    bangFinder(vars, expr,
+                                               []))
+                                operands
+    in
+        (unite(bangFinder(vars, operator, banged),
+               unite(union(allBangedList, banged), banged))
+         : string list)
+    end
+  | bangFinder (vars, VarParam(var, i), banged) =
+    banged
+  | bangFinder (_, VarBound(_), banged) = banged
+  | bangFinder (_, VarFree(_), banged) = banged
+  | bangFinder (_, err, _) =
+    (print ("bangFinder:\n");
+     raise NotYetImplemented)
+and findBangedVars  (vars, body : Expr) =
+    bangFinder(vars, body, [] : string list);
+    
+
+
 structure SemanticAnalysis : SEMANTIC_ANALYSIS =
 struct
-fun boxSet (origExpr as Abs(vars, body)) =
+    
+fun boxSet (e as Const(_)) = e
+  | boxSet (e as VarFree(_)) = e
+  | boxSet (e as VarParam(_, _)) = e
+  | boxSet (e as VarBound(_, _, _)) = e
+  | boxSet (Abs(vars, body)) =(print "in boxSet/Abs\n";
     (case findBangedVars(vars, body) of
-         [] => origExpr
-       | bangedvars => boxVars(bangedvars, boxSet(body))
-    (* | _ => raise AbsBoxingException *)
-    )
-  | boxSet (origExpr as AbsOpt(vars, opt, body)) =
+         [] => (print "not found.."; Abs(vars, boxSet(body)))
+       | bangedvars => (print "found!";
+                        Abs(vars, boxVars(bangedvars,
+                                          boxSet(body))))))
+  | boxSet (AbsOpt(vars, opt, body)) =
     (case findBangedVars(vars, body) of
-         [] => origExpr
-       | [bangedvars] => boxVars(bangedvars, boxSet(body))
-       | _ => raise AbsOptBoxingException)
+         [] => boxSet body
+       | bangedvars : string list =>
+         boxVars(bangedvars, boxSet(body))
+    (* | _ => raise AbsOptBoxingException *))
   | boxSet (AbsVar(var, body)) =
     AbsVar(var, boxSet body)
   | boxSet (Seq(exprList)) =
     Seq((map boxSet exprList))
   | boxSet (If(e1, e2, e3)) =
     If (boxSet e1, boxSet e2, boxSet e3)
-  | boxSet (App(expr, exprList)) =
-    App(boxSet expr, (map boxSet exprList))
+  | boxSet (App(expr, exprList)) = (print "in boxSet/App\n";
+    App(boxSet expr, (map boxSet exprList)))
   | boxSet (AppTP(expr, exprList)) =
     AppTP(boxSet expr, (map boxSet exprList))
   | boxSet (Or(exprList)) =
@@ -856,10 +964,20 @@ fun boxSet (origExpr as Abs(vars, body)) =
     Set(boxSet e1, boxSet e2)
   | boxSet (Def(e1, e2)) =
     Def(boxSet e1, boxSet e2)
-  | boxSet els = els ;  (* leave expr as it was - vars and consts *)
+  (* leave expr as it was - vars and consts *)
+  | boxSet els = els;
+
 
 fun annotateTC expr = run(expr, true);
 fun lexicalAddressing expr = lexicalWorker(expr, [[]]);
-fun analysis expr =  lexicalAddressing (annotateTC (boxSet expr));
+fun analysis expr =  lexicalAddressing (annotateTC ((* boxSet *) expr));
     
 end; (* of struct SemanticAnalysis *)
+
+
+
+
+
+
+
+
