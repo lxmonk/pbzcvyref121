@@ -850,6 +850,16 @@ fun bangFinder (vars : string list, Const(s) : Expr,
        | SOME(var) => var :: (bangFinder(vars, value,
                                          banged)))
     )
+  | bangFinder (vars, Set(VarFree(var), value), banged) =
+    (case (inVarList(var, vars)) of
+         NONE => bangFinder (vars, value, banged)
+       | SOME(var) => var :: (bangFinder(vars, value,
+                                         banged)))
+  | bangFinder(vars, Set(VarParam(var, _), value), banged) =
+    (case (inVarList(var, vars)) of
+         NONE => bangFinder (vars, value, banged)
+       | SOME(var) => var :: (bangFinder(vars, value,
+                                         banged)))
   | bangFinder(vars, Set(exp, value), banged) =
     unite(bangFinder(vars, exp, banged),
           bangFinder(vars, value, banged))
