@@ -141,6 +141,27 @@ and toStringWithCar(car, Nil) = "(" ^ car ^ ")"
 and sexprToString(Void) = ""
   | sexprToString(e) = sexprToString'(e);
 
+(* FIXME TODO DELETE THESE *)
+val rec stringlistToString = fn(nil) => ""
+		             | (h::nil) => h
+		             | (h::t) => h ^ " " ^ stringlistToString(t);
+val rec exprToString = fn(Const x) => sexprToString(x)
+	               | Var x => x
+	               | VarFree x => x
+	               | VarParam (x, n) => x
+	               | VarBound (x,n1,n2) => x
+	               | If (X ,Y ,Z) => "(if " ^ exprToString(X) ^" "^ exprToString(Y) ^" "^ exprToString(Z) ^ ")" 
+		       | Abs(Slist,E)=> "(lambda ("^stringlistToString(Slist)^") " ^ exprToString(E) ^ ")"
+		       | AbsOpt(SList,S,E) => "(lambda ("^stringlistToString(SList)^" . " ^ S ^ ") " ^ exprToString(E) ^ ")"
+		       | AbsVar(S,E) => "(lambda " ^ S ^ exprToString(E) ^ ")"
+		       | App(X,XList) => "("^exprToString(X) ^" "^ stringlistToString(map exprToString XList) ^ ")"
+		       | AppTP(X,XList) => "("^exprToString(X) ^" "^ stringlistToString(map exprToString XList) ^ ")"
+		       | Seq(XList) => "(begin " ^ stringlistToString(map exprToString XList) ^ ")"
+		       | Or(XList) => "(or " ^ stringlistToString(map exprToString XList) ^ ")"
+		       | Set(X,Y) => "(set! " ^exprToString(X) ^" "^ exprToString(Y)^" )"
+		       | Def(X,Y) => "(define " ^exprToString(X) ^" "^ exprToString(Y)^")";
+
+(* FIXME TODO DELETE THESE *)		  
 local
     val bintag = (fn tag => (fn str => "<" ^ tag ^ ">" ^ str ^ "</" ^ tag ^ ">"))
     val ital = bintag "I"
@@ -702,286 +723,437 @@ sig
     val analysis : Expr -> Expr;
 end;
 
-exception NotYetImplemented ;
-exception AbsBoxingException;
-exception AbsOptBoxingException;
-exception AbsVarBoxingException;
-exception LookupError;
-exception LexicalWorkerError;
-exception AnnotateTCRunErr;
-
-
-fun getIdx (el, [], n) = NONE
-  | getIdx (el, h::tl, n) =
-    if el = h then SOME(n)
-    else getIdx(el, tl, n+1);
-
-fun lookup (name, [], row) = NONE
-  | lookup (name, symtab, row) =
-    if row >= (length symtab)   (* search exhausted *)
-    then NONE
-    else
-        (case (getIdx(name, List.nth (symtab, row), 0)) of
-             NONE => lookup(name, symtab, row+1)
-           | SOME(i) => SOME(row - 1, i));
-
-fun lexicalWorker (Var(name), symtab) =
-    (case (lookup(name, symtab, 0)) of
-         NONE => VarFree(name)
-       | SOME((~1, index)) => VarParam(name, index)
-       | SOME(i1, i2) => VarBound(name, i1, i2))
-  | lexicalWorker (Abs(strList, expr), symtab) =
-    Abs(strList, lexicalWorker(expr,
-                               strList :: symtab))
-  | lexicalWorker (AbsOpt(strList, FIXME, expr), symtab) =
-    AbsOpt(strList, FIXME, lexicalWorker(expr,
-                                         strList :: symtab))
-  | lexicalWorker (AbsVar (s, expr), symtab) =
-    AbsVar (s, lexicalWorker(expr, symtab))
-  | lexicalWorker (If(e1, e2, e3), symtab) =
-    If(lexicalWorker(e1, symtab),
-       lexicalWorker(e2, symtab),
-       lexicalWorker(e3, symtab))
-  | lexicalWorker (App(operator, operands), symtab) =
-    App(lexicalWorker(operator, symtab),
-        (map (fn operand => (lexicalWorker (operand, symtab))) operands))
-  | lexicalWorker (AppTP(operator, operands), symtab) =
-    AppTP(lexicalWorker(operator, symtab),
-          (map (fn operand => (lexicalWorker (operand, symtab))) operands))
-  | lexicalWorker (Seq(exprList), symtab) =
-    Seq((map (fn expr => (lexicalWorker (expr, symtab)))
-             exprList))
-  | lexicalWorker (Or(exprList), symtab) =
-    Or((map (fn expr => (lexicalWorker (expr, symtab)))
-            exprList))
-  | lexicalWorker (Set(e1, e2), symtab) =
-    Set(lexicalWorker(e1, symtab),
-        lexicalWorker(e2, symtab))
-  | lexicalWorker (Def(e1, e2), symtab) =
-    Def(lexicalWorker(e1, symtab),
-        lexicalWorker(e2, symtab))
-  | lexicalWorker (Const(sexpr), _) = Const(sexpr)
-  | lexicalWorker _ = raise LexicalWorkerError;
-
-    print "\n\n\n\n\n\n\nTODO: PUT US ^ BACK IN!!\n\n\n\n\n\n\n";
-val prn = foldr (fn (a, b) => a ^ ", " ^ b) "";
-
-fun run (pe as Const(_), inTP) = pe
-  | run (pe as Var(_), inTP) = pe
-  | run (If(test, dit, dif), inTP) =
-    If((run (test, false)),
-       (run (dit, inTP)),
-       (run (dif, inTP)))
-  | run (Seq([last]), inTP) =
-    Seq([(run(last, inTP))])
-  | run (Seq(lst), inTP) =
-    let val last = List.last(lst)
-        val len = List.length(lst)
-        val butlast = List.take(lst, len - 1)
-    in
-        Seq(((map (fn element => run(element, false)) butlast))  @ 
-            [run(last, inTP)])
-    end
-  | run (Or([last]), inTP) =
-    Or([(run(last, inTP))])
-  | run (Or(lst), inTP) =
-    let val last = List.last(lst)
-        val len = List.length(lst)
-        val butlast = List.take(lst, len - 1)
-    in
-        Or((map (fn element => (run(element, false)))
-                 butlast) @ [(run(last, inTP))])
-    end
-  | run (Set(e1, e2), inTP) =
-    Set(e1, run(e2, false))
-  | run (Def(e1, e2), inTP) =
-    Def(e1, run(e2, false))
-  | run (App(operator, operands), false) =
-    App((run (operator, false)),
-        (map (fn arg => run(arg, false)) operands))
-  | run (App(operator, operands), true) =
-    AppTP((run (operator, false)),
-          (map (fn arg => run(arg, false)) operands))
-  | run (Abs(vars, body), inTP) =
-    Abs(vars, run(body, true))
-  | run (AbsOpt(vars, extra, body), inTP) =
-    AbsOpt(vars, extra, run(body, true))
-  | run (AbsVar(var, body), inTP) =
-    AbsVar(var, run(body, true))
-  | run err = raise AnnotateTCRunErr;
-
-
-fun inVarList (var, []) = (print ("inVarList: " ^ var ^
-                                  " not in.\n"); NONE)
-  | inVarList (var, h::tl) =
-    if var = h then SOME(var)
-    else
-        inVarList(var, tl);
-
-fun union ([] : string list list, result : string list) =
-    result
-  | union (([] :: lists : string list list), result) =
-    union (lists, result)
-  | union (((l : string) :: (lst : string list)) ::
-            (lists : string list list),
-            result) =
-    union(lst :: lists, l :: result)
-    
-fun unite ([], result) = result
-  | unite (l::lst, result) =
-    (case (inVarList(l, result)) of
-         NONE => unite(lst, l::result)
-       | SOME(l) => unite(lst, result))
-        
-
-    
-fun boxVars (strList : string list, expr : Expr) =
-    (print "boxVars\n"; raise NotYetImplemented);
-
-
-fun bangFinder (vars : string list, Const(s) : Expr,
-                banged : string list) =
-    banged 
-  | bangFinder(vars, Set(VarBound(var, _, _), value), banged) =
-    (print ("bangFinder/Set(VarBound) with vars: " ^
-            foldr (fn (a, b) => a ^ ", " ^ b) "" vars);
-    (case (inVarList(var, vars)) of
-         NONE => bangFinder (vars, value, banged)
-       | SOME(var) => var :: (bangFinder(vars, value,
-                                         banged)))
-    )
-  | bangFinder (vars, Set(VarFree(var), value), banged) =
-    (case (inVarList(var, vars)) of
-         NONE => bangFinder (vars, value, banged)
-       | SOME(var) => var :: (bangFinder(vars, value,
-                                         banged)))
-  | bangFinder(vars, Set(VarParam(var, _), value), banged) =
-    (case (inVarList(var, vars)) of
-         NONE => bangFinder (vars, value, banged)
-       | SOME(var) => var :: (bangFinder(vars, value,
-                                         banged)))
-  | bangFinder(vars, Set(exp, value), banged) =
-    unite(bangFinder(vars, exp, banged),
-          bangFinder(vars, value, banged))
-  | bangFinder(vars, Seq(exprLst), banged) =
-    let val allBangedList = map (fn expr =>
-                                    bangFinder(vars, expr,
-                                               []))
-                                exprLst
-    in
-        unite(union(allBangedList, []), banged)
-    end
-  | bangFinder (vars, If(test, dit, dif), banged) =
-    unite(union((map (fn expr => bangFinder(vars, expr,
-                                            []))
-                     [test, dit, dif]), []), banged)
-  | bangFinder (vars, Or(exprLst), banged) =
-    let val allBangedList = map (fn expr =>
-                                    bangFinder(vars, expr,
-                                               []))
-                                exprLst
-    in
-        unite(union(allBangedList, []), banged)
-    end
-  | bangFinder (vars, Def(e1, e2), banged) =
-    unite(bangFinder(vars, e1, banged),
-          bangFinder(vars, e2, banged))
-  | bangFinder (vars, Abs(args, body), banged) =
-    let val filteredVars = (print ("unfiltered vars:" ^ prn(vars) ^ "\nargs: " ^ prn(args) ^ "\n");
-            List.filter (fn (x : string) =>
-                            not (isSome(inVarList(x, args))))
-                        vars)
-        val dontcare = print("filteredVars: " ^
-                             (foldr (fn (a, b) => a ^ ", " ^ b)
-                                    "" filteredVars) ^ "\n")
-    in
-        bangFinder(filteredVars, body, banged)
-    end
-  | bangFinder (vars, AbsOpt(args, extra, body), banged) =
-    let val filteredVars =
-            List.filter (fn x : string =>
-                            not (isSome(inVarList(x, args))))
-                        vars
-    in
-        bangFinder(filteredVars, body : Expr, banged)
-    end
-  | bangFinder (vars, AbsVar(argList, body), banged) =
-    bangFinder (vars, body, banged)
-  | bangFinder (vars, exp as App(operator, operands), banged) =
-    (print ("bangFinder/App\n");
-    let val allBangedList = map (fn expr =>
-                                    bangFinder(vars, expr,
-                                               []))
-                                operands
-    in
-        unite(bangFinder(vars, operator, banged),
-              unite(union(allBangedList, banged), banged))
-    end)
-  | bangFinder (vars, AppTP(operator, operands), banged) =
-    let val allBangedList = map (fn expr =>
-                                    bangFinder(vars, expr,
-                                               []))
-                                operands
-    in
-        (unite(bangFinder(vars, operator, banged),
-               unite(union(allBangedList, banged), banged))
-         : string list)
-    end
-  | bangFinder (vars, VarParam(var, i), banged) =
-    banged
-  | bangFinder (_, VarBound(_), banged) = banged
-  | bangFinder (_, VarFree(_), banged) = banged
-  | bangFinder (_, err, _) =
-    (print ("bangFinder:\n");
-     raise NotYetImplemented)
-and findBangedVars  (vars, body : Expr) =
-    bangFinder(vars, body, [] : string list);
-    
-
 
 structure SemanticAnalysis : SEMANTIC_ANALYSIS =
 struct
-    
-fun boxSet (e as Const(_)) = e
-  | boxSet (e as VarFree(_)) = e
-  | boxSet (e as VarParam(_, _)) = e
-  | boxSet (e as VarBound(_, _, _)) = e
-  | boxSet (Abs(vars, body)) =(print "in boxSet/Abs\n";
-    (case findBangedVars(vars, body) of
-         [] => (print "not found.."; Abs(vars, boxSet(body)))
-       | bangedvars => (print "found!";
-                        Abs(vars, boxVars(bangedvars,
-                                          boxSet(body))))))
-  | boxSet (AbsOpt(vars, opt, body)) =
-    (case findBangedVars(vars, body) of
-         [] => boxSet body
-       | bangedvars : string list =>
-         boxVars(bangedvars, boxSet(body))
-    (* | _ => raise AbsOptBoxingException *))
-  | boxSet (AbsVar(var, body)) =
-    AbsVar(var, boxSet body)
-  | boxSet (Seq(exprList)) =
-    Seq((map boxSet exprList))
-  | boxSet (If(e1, e2, e3)) =
-    If (boxSet e1, boxSet e2, boxSet e3)
-  | boxSet (App(expr, exprList)) = (print "in boxSet/App\n";
-    App(boxSet expr, (map boxSet exprList)))
-  | boxSet (AppTP(expr, exprList)) =
-    AppTP(boxSet expr, (map boxSet exprList))
-  | boxSet (Or(exprList)) =
-    Or(map boxSet exprList)
-  | boxSet (Set(e1, e2)) =
-    Set(boxSet e1, boxSet e2)
-  | boxSet (Def(e1, e2)) =
-    Def(boxSet e1, boxSet e2)
-  (* leave expr as it was - vars and consts *)
-  | boxSet els = els;
+local
+    exception NotYetImplemented ;
+    exception AbsBoxingException;
+    exception AbsOptBoxingException;
+    exception AbsVarBoxingException;
+    exception LookupError;
+    exception LexicalWorkerError;
+    exception AnnotateTCRunErr;
+    exception ErrorInPlacer;
+    exception ErrorInLexicalAddressing;
 
 
-fun annotateTC expr = run(expr, true);
+    fun getIdx (el, [], n) = NONE
+      | getIdx (el, h::tl, n) =
+        if el = h then SOME(n)
+        else getIdx(el, tl, n+1);
+
+    fun lookup (name, [], row) = NONE
+      | lookup (name, symtab, row) =
+        if row >= (length symtab)   (* search exhausted *)
+        then NONE
+        else
+            (case (getIdx(name, List.nth (symtab, row), 0)) of
+                 NONE => lookup(name, symtab, row+1)
+               | SOME(i) => SOME(row - 1, i));
+
+    fun lexicalWorker (Var(name), symtab) =
+        (case (lookup(name, symtab, 0)) of
+             NONE => VarFree(name)
+           | SOME((~1, index)) => VarParam(name, index)
+           | SOME(i1, i2) => VarBound(name, i1, i2))
+      | lexicalWorker (Abs(strList, expr), symtab) =
+        Abs(strList, lexicalWorker(expr,
+                                   strList :: symtab))
+      | lexicalWorker (AbsOpt(strList, FIXME, expr), symtab) =
+        AbsOpt(strList, FIXME, lexicalWorker(expr,
+                                             strList :: symtab))
+      | lexicalWorker (AbsVar (s, expr), symtab) =
+        AbsVar (s, lexicalWorker(expr, [s] :: symtab))
+      | lexicalWorker (If(e1, e2, e3), symtab) =
+        If(lexicalWorker(e1, symtab),
+           lexicalWorker(e2, symtab),
+           lexicalWorker(e3, symtab))
+      | lexicalWorker (App(operator, operands), symtab) =
+        App(lexicalWorker(operator, symtab),
+            (map (fn operand => (lexicalWorker (operand, symtab))) operands))
+      | lexicalWorker (AppTP(operator, operands), symtab) =
+        AppTP(lexicalWorker(operator, symtab),
+              (map (fn operand => (lexicalWorker (operand, symtab))) operands))
+      | lexicalWorker (Seq(exprList), symtab) =
+        Seq((map (fn expr => (lexicalWorker (expr, symtab)))
+                 exprList))
+      | lexicalWorker (Or(exprList), symtab) =
+        Or((map (fn expr => (lexicalWorker (expr, symtab)))
+                exprList))
+      | lexicalWorker (Set(e1, e2), symtab) =
+        Set(lexicalWorker(e1, symtab),
+            lexicalWorker(e2, symtab))
+      | lexicalWorker (Def(e1, e2), symtab) =
+        Def(lexicalWorker(e1, symtab),
+            lexicalWorker(e2, symtab))
+      | lexicalWorker (Const(sexpr), _) = Const(sexpr)
+      | lexicalWorker (e as VarFree(_), _) = e
+      | lexicalWorker (e as VarBound(_), _) = e
+      | lexicalWorker (e as VarParam(_), _) = e
+
+    val prn = foldr (fn (a, b) => a ^ ", " ^ b) "";
+
+    fun run (pe as Const(_), inTP) = pe
+      | run (pe as Var(_), inTP) = pe
+      | run (pe as VarFree(_), inTP) = pe
+      | run (pe as VarParam(_), inTP) = pe
+      | run (pe as VarBound(_), inTP) = pe
+      | run (If(test, dit, dif), inTP) =
+        If((run (test, false)),
+           (run (dit, inTP)),
+           (run (dif, inTP)))
+      | run (Seq([last]), inTP) =
+        Seq([(run(last, inTP))])
+      | run (Seq(lst), inTP) =
+        let val last = List.last(lst)
+            val len = List.length(lst)
+            val butlast = List.take(lst, len - 1)
+        in
+            Seq(((map (fn element => run(element, false)) butlast))  @ 
+                [run(last, inTP)])
+        end
+      | run (Or([last]), inTP) =
+        Or([(run(last, inTP))])
+      | run (Or(lst), inTP) =
+        let val last = List.last(lst)
+            val len = List.length(lst)
+            val butlast = List.take(lst, len - 1)
+        in
+            Or((map (fn element => (run(element, false)))
+                    butlast) @ [(run(last, inTP))])
+        end
+      | run (Set(e1, e2), inTP) =
+        Set(e1, run(e2, false))
+      | run (Def(e1, e2), inTP) =
+        Def(e1, run(e2, false))
+      | run (App(operator, operands), false) =
+        App((run (operator, false)),
+            (map (fn arg => run(arg, false)) operands))
+      | run (App(operator, operands), true) =
+        AppTP((run (operator, false)),
+              (map (fn arg => run(arg, false)) operands))
+      | run (Abs(vars, body), inTP) =
+        Abs(vars, run(body, true))
+      | run (AbsOpt(vars, extra, body), inTP) =
+        AbsOpt(vars, extra, run(body, true))
+      | run (AbsVar(var, body), inTP) =
+        AbsVar(var, run(body, true))
+      | run err = raise AnnotateTCRunErr;
+
+
+    fun inVarList (var, []) = NONE
+      | inVarList (var, h::tl) =
+        if var = h then SOME(var)
+        else
+            inVarList(var, tl);
+
+    fun union ([] : string list list, result : string list) =
+        result
+      | union (([] :: lists : string list list), result) =
+        union (lists, result)
+      | union (((l : string) :: (lst : string list)) ::
+               (lists : string list list),
+               result) =
+        union(lst :: lists, l :: result)
+        
+    fun unique ([], result) = result
+      | unique (l::lst, result) =
+        (case (inVarList(l, result)) of
+             NONE => unique(lst, l::result)
+           | SOME(l) => unique(lst, result));
+
+    fun intersection ([], lst, result) = result
+      | intersection (s::strs, lst, result) =
+        (case inVarList(s, lst) of
+             NONE => intersection(strs, lst, result)
+           | SOME(s) => intersection(strs, lst, s::result))
+    val car = VarFree("car");
+    val set_car = VarFree("set-car!");
+        
+    fun boxVarInExpr (e as Const(_), _ : string) = e
+      | boxVarInExpr (e as VarFree(_), _) = e
+      | boxVarInExpr (e as VarBound(name, i1, i2), var) =
+        if var = name
+        then
+            App(car, [e])
+        else
+            e
+      | boxVarInExpr (e as VarParam(name, i), var) =
+        if var = name
+        then
+            App(car, [e])
+        else
+            e
+      | boxVarInExpr (e as Set(pVar as VarParam(name, i),
+                               value), var) =
+        if var = name
+        then
+            (App(set_car, pVar :: [boxVarInExpr(value, var)]))
+        else
+            Set(pVar, boxVarInExpr(value, var))
+      | boxVarInExpr (e as Set(bVar as VarBound(name, i1, i2),
+                               value), var) =
+        if var = name
+        then
+            (App(set_car, bVar :: [boxVarInExpr(value, var)]))
+        else
+            Set(bVar, boxVarInExpr(value, var))
+      | boxVarInExpr (e as Set(VarFree(name), value), var) = e
+      | boxVarInExpr (If(test, dit, dif), var) =
+        If(boxVarInExpr(test, var),
+           boxVarInExpr(dit, var),
+           boxVarInExpr(dif, var))
+      | boxVarInExpr (Abs(vars, body), var) =
+        (case (inVarList(var, vars)) of
+             NONE => Abs(vars, boxVarInExpr(body, var))
+           | SOME(var) => Abs(vars, body))
+      (* this var is re-bound by the lambda, 
+       so no more replacing *)
+      | boxVarInExpr (AbsOpt(vars, optVar, body), var) =
+        (case (inVarList(var, vars)) of
+             NONE => Abs(vars, boxVarInExpr(body, var))
+           | SOME(var) => AbsOpt(vars, optVar, body))
+      (* this var is re-bound by the lambda, 
+       so no more replacing *)
+      | boxVarInExpr (e as AbsVar(varListName, body), var) =
+        if var = varListName
+        then
+            e
+        else
+            AbsVar(varListName, boxVarInExpr(body, var))
+      | boxVarInExpr (App(operator, operands), var) =
+        App(boxVarInExpr(operator, var),
+            (map (fn arg => boxVarInExpr(arg, var)) operands))
+      | boxVarInExpr (AppTP(operator, operands), var) =
+        AppTP(boxVarInExpr(operator, var),
+              (map (fn arg => boxVarInExpr(arg, var)) operands))
+      | boxVarInExpr (Seq(exprs), var) =
+        Seq(map (fn expr => boxVarInExpr(expr, var)) exprs)
+      | boxVarInExpr (Or(exprs), var) =
+        Or(map (fn expr => boxVarInExpr(expr, var)) exprs)
+      | boxVarInExpr (Def(deffed, value), var) =
+        Def(boxVarInExpr(deffed, var),
+            boxVarInExpr(value, var))
+      | boxVarInExpr (Var(_), var) = raise ErrorInLexicalAddressing
+      | boxVarInExpr (Set(_), var) = raise ErrorInLexicalAddressing;
+
+    fun placer (var : string, [], i) = raise ErrorInPlacer
+      | placer (var, v::vars, i) =
+        if var = v
+        then
+            i
+        else
+            placer(var, vars, i+1);
+        
+    fun placeFinder(var, vars) = placer(var, vars, 0);
+        
+    fun boundVarsFinder ([], _, bound) = bound (*found all of them*)
+      | boundVarsFinder (vars, Const(_), bound) = bound
+      | boundVarsFinder (vars, Var(_), bound) =
+        bound
+      | boundVarsFinder (vars, VarFree(_), bound) = bound
+      | boundVarsFinder (vars, VarBound(name, _, _), bound) =
+        (case (inVarList(name, vars)) of
+             NONE => bound
+           | SOME(name) => name :: bound)
+      | boundVarsFinder (vars, VarParam(_), bound) = bound
+      | boundVarsFinder (vars, If(test, dit, dif), bound) =
+        unique(union([boundVarsFinder(vars, test, bound),
+                      boundVarsFinder(vars, dit, bound),
+                      boundVarsFinder(vars, dif, bound)], []),
+               bound)
+      | boundVarsFinder (vars, Abs(_, body), bound) =
+        boundVarsFinder (vars, body, bound)
+      | boundVarsFinder (vars, AbsOpt(_, _, body), bound) =
+        boundVarsFinder (vars, body, bound)
+      | boundVarsFinder (vars, AbsVar(_, body), bound) =
+        boundVarsFinder (vars, body, bound)
+      | boundVarsFinder (vars, App(operator, operands), bound) =
+        unique(union(boundVarsFinder(vars, operator, bound) ::
+                     (map (fn arg =>
+                              boundVarsFinder(vars, arg, bound))
+                          operands),
+                     bound), bound)
+      | boundVarsFinder (vars, AppTP(operator, operands), bound) =
+        unique(union(boundVarsFinder(vars, operator, bound) ::
+                     (map (fn arg =>
+                              boundVarsFinder(vars, arg, bound))
+                          operands),
+                     bound), bound)
+      | boundVarsFinder (vars, Seq(exprs), bound) =
+        unique(union((map (fn expr =>
+                              boundVarsFinder(vars, expr, bound))
+                          exprs), bound), bound)
+      | boundVarsFinder (vars, Or(exprs), bound) =
+        unique(union((map (fn expr =>
+                              boundVarsFinder(vars, expr, bound))
+                          exprs), bound), bound)
+      | boundVarsFinder (vars, Set(var, value), bound) =
+        unique(union([boundVarsFinder(vars, var, bound),
+                      boundVarsFinder(vars, value, bound)],
+                     bound),
+               bound)
+      | boundVarsFinder (vars, Def(deffed, value), bound) =
+        unique(union([boundVarsFinder(vars, deffed, bound),
+                      boundVarsFinder(vars, value, bound)],
+                     bound),
+               bound)
+        
+        
+    fun boxVars (banged : string list, vars : string list,
+                 expr : Expr) =
+        let val setList = map (fn var =>
+                                  Set(VarParam(var,
+                                               placeFinder(var, vars)),
+                                      App(VarFree("list"),
+                                          [VarParam(var,
+                                                    placeFinder(var,
+                                                                vars))])))
+                              banged
+        in
+            Seq(setList @ [foldl (fn (var, e) =>
+                                     boxVarInExpr(e, var))
+                                 expr banged])
+        end;
+
+    fun bangFinder (vars : string list, Const(s) : Expr,
+                    banged : string list) =
+        banged 
+      | bangFinder(vars, Set(VarBound(var, _, _), value), banged) =
+        (case (inVarList(var, vars)) of
+             NONE => bangFinder (vars, value, banged)
+           | SOME(var) => var :: (bangFinder(vars, value,
+                                             banged)))
+      | bangFinder (vars, Set(VarFree(var), value), banged) =
+        (case (inVarList(var, vars)) of
+             NONE => bangFinder (vars, value, banged)
+           | SOME(var) => var :: (bangFinder(vars, value,
+                                             banged)))
+      | bangFinder(vars, Set(VarParam(var, _), value), banged) =
+        (case (inVarList(var, vars)) of
+             NONE => bangFinder (vars, value, banged)
+           | SOME(var) => var :: (bangFinder(vars, value,
+                                             banged)))
+      | bangFinder(vars, Set(exp, value), banged) =
+        unique(bangFinder(vars, exp, banged),
+               bangFinder(vars, value, banged))
+      | bangFinder(vars, Seq(exprLst), banged) =
+        let val allBangedList = map (fn expr =>
+                                        bangFinder(vars, expr,
+                                                   []))
+                                    exprLst
+        in
+            unique(union(allBangedList, []), banged)
+        end
+      | bangFinder (vars, If(test, dit, dif), banged) =
+        unique(union((map (fn expr => bangFinder(vars, expr,
+                                                 []))
+                          [test, dit, dif]), []), banged)
+      | bangFinder (vars, Or(exprLst), banged) =
+        let val allBangedList = map (fn expr =>
+                                        bangFinder(vars, expr,
+                                                   []))
+                                    exprLst
+        in
+            unique(union(allBangedList, []), banged)
+        end
+      | bangFinder (vars, Def(e1, e2), banged) =
+        unique(bangFinder(vars, e1, banged),
+               bangFinder(vars, e2, banged))
+      | bangFinder (vars, Abs(args, body), banged) =
+        let val filteredVars = 
+                List.filter (fn (x : string) =>
+                                not (isSome(inVarList(x, args))))
+                            vars
+        in
+            bangFinder(filteredVars, body, banged)
+        end
+      | bangFinder (vars, AbsOpt(args, extra, body), banged) =
+        let val filteredVars =
+                List.filter (fn x : string =>
+                                not (isSome(inVarList(x, args))))
+                            vars
+        in
+            bangFinder(filteredVars, body : Expr, banged)
+        end
+      | bangFinder (vars, AbsVar(argList, body), banged) =
+        bangFinder (vars, body, banged)
+      | bangFinder (vars, exp as App(operator, operands),
+                    banged) =
+
+         let val allBangedList = map (fn expr =>
+                                         bangFinder(vars, expr,
+                                                    []))
+                                     operands
+         in
+             unique(bangFinder(vars, operator, banged),
+                    unique(union(allBangedList, banged), banged))
+         end
+      | bangFinder (vars, AppTP(operator, operands), banged) =
+        let val allBangedList = map (fn expr =>
+                                        bangFinder(vars, expr,
+                                                   []))
+                                    operands
+        in
+            (unique(bangFinder(vars, operator, banged),
+                    unique(union(allBangedList, banged), banged))
+             : string list)
+        end
+      | bangFinder (vars, VarParam(var, i), banged) =
+        banged
+      | bangFinder (_, VarBound(_), banged) = banged
+      | bangFinder (_, VarFree(_), banged) = banged
+      | bangFinder (vars, err, banged) =
+        raise NotYetImplemented
+    and findBangedVars  (vars, body : Expr) =
+        intersection(bangFinder(vars, body, [] : string list),
+                     boundVarsFinder(vars, body, []), []);
+        
+
+
+
+        
+    fun boxSet' (e as Const(_)) = e
+      | boxSet' (e as VarFree(_)) = e
+      | boxSet' (e as VarParam(_, _)) = e
+      | boxSet' (e as VarBound(_, _, _)) = e
+      | boxSet' (Abs(vars, body)) =
+        (case findBangedVars(vars, body) of
+             [] => Abs(vars, boxSet'(body))
+           | bangedvars => Abs(vars, boxVars(bangedvars,
+                                             vars,
+                                             boxSet'(body))))
+      | boxSet' (AbsOpt(vars, opt, body)) =
+        (case findBangedVars(vars, body) of
+             [] => boxSet' body
+           | bangedvars : string list =>
+             AbsOpt(vars, opt, boxVars(bangedvars, vars, boxSet'(body)))
+        (* | _ => raise AbsOptBoxingException *))
+      | boxSet' (AbsVar(var, body)) =
+        AbsVar(var, boxSet' body)
+      | boxSet' (Seq(exprList)) =
+        Seq((map boxSet' exprList))
+      | boxSet' (If(e1, e2, e3)) =
+        If (boxSet' e1, boxSet' e2, boxSet' e3)
+      | boxSet' (App(expr, exprList)) = 
+        App(boxSet' expr, (map boxSet' exprList))
+      | boxSet' (AppTP(expr, exprList)) =
+        AppTP(boxSet' expr, (map boxSet' exprList))
+      | boxSet' (Or(exprList)) =
+        Or(map boxSet' exprList)
+      | boxSet' (Set(e1, e2)) =
+        Set(boxSet' e1, boxSet' e2)
+      | boxSet' (Def(e1, e2)) =
+        Def(boxSet' e1, boxSet' e2)
+      (* leave expr as it was - vars and consts *)
+      | boxSet' els = els;
+in
 fun lexicalAddressing expr = lexicalWorker(expr, [[]]);
-fun analysis expr =  lexicalAddressing (annotateTC ((* boxSet *) expr));
-    
+fun boxSet (expr : Expr) = boxSet'(lexicalAddressing expr);
+fun annotateTC expr = run(expr, true);
+fun analysis expr =  lexicalAddressing (annotateTC (boxSet expr));
+end  
 end; (* of struct SemanticAnalysis *)
 
 

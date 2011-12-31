@@ -1,0 +1,166 @@
+SemanticAnalysis.analysis(TagParser.stringToPE "x") = VarFree "x";
+SemanticAnalysis.analysis(TagParser.stringToPE "(x x)") = AppTP (VarFree "x",[VarFree "x"]);
+SemanticAnalysis.analysis(TagParser.stringToPE "(x (x x))") = AppTP (VarFree "x",[App (VarFree "x",[VarFree "x"])]) ;
+SemanticAnalysis.analysis(TagParser.stringToPE "(x (x (lambda (y) (x y))))") =
+  AppTP
+    (VarFree "x",
+     [App (VarFree "x",[Abs (["y"],AppTP (VarFree "x",[VarParam ("y",0)]))])])
+  ;
+SemanticAnalysis.analysis(TagParser.stringToPE "(x (lambda () (x (lambda () (x (lambda () (x (lambda () (x (x (x x)))))))))))") =
+  AppTP
+    (VarFree "x",
+     [Abs
+        ([],
+         AppTP
+           (VarFree "x",
+            [Abs
+               ([],
+                AppTP
+                  (VarFree "x",
+                   [Abs
+                      ([],
+                       AppTP
+                         (VarFree "x",
+                          [Abs
+                             ([],
+                              AppTP
+                                (VarFree "x",
+                                 [App
+                                    (VarFree "x",
+                                     [App (VarFree "x",[VarFree "x"])])]))]))]))]))])
+;
+- SemanticAnalysis.analysis(TagParser.stringToPE "(set! x 3)");
+val it = Set (VarFree "x",Const (Number 3)) : Expr
+- SemanticAnalysis.analysis(TagParser.stringToPE "(define x 3)");
+val it = Def (VarFree "x",Const (Number 3)) : Expr
+- SemanticAnalysis.analysis(TagParser.stringToPE "#(a b c)");
+
+uncaught exception MustBeQuotedInR6RS
+  raised at: compiler.sml:467.16-467.34
+- SemanticAnalysis.analysis(TagParser.stringToPE "()");
+
+uncaught exception MustBeQuotedInR6RS
+  raised at: compiler.sml:459.16-459.34
+- SemanticAnalysis.analysis(TagParser.stringToPE "'()");
+val it = Const Nil : Expr
+- SemanticAnalysis.analysis(TagParser.stringToPE "'#(a b c)");
+val it = Const (Vector [Symbol "a",Symbol "b",Symbol "c"]) : Expr
+- SemanticAnalysis.analysis(TagParser.stringToPE "''''a");
+val it =
+  Const
+    (Pair
+       (Symbol "quote",
+        Pair
+          (Pair
+             (Symbol "quote",
+              Pair (Pair (Symbol "quote",Pair (Symbol "a",Nil)),Nil)),Nil)))
+  : Expr
+- SemanticAnalysis.analysis(TagParser.stringToPE "'a");
+val it = Const (Symbol "a") : Expr
+- SemanticAnalysis.analysis(TagParser.stringToPE "(define fact (lambda (n) (if (zero? n) 1 (* n (fact (- n 1))))))");
+val it =
+  Def
+    (VarFree "fact",
+     Abs
+       (["n"],
+        If
+          (App (VarFree "zero?",[VarParam ("n",0)]),Const (Number 1),
+           AppTP
+             (VarFree "*",
+              [VarParam ("n",0),
+               App
+                 (VarFree "fact",
+                  [App (VarFree "-",[VarParam ("n",0),Const (Number 1)])])]))))
+  : Expr
+- exprToString(SemanticAnalysis.analysis(TagParser.stringToPE "(lambda (x) (x (lambda (y) (x (lambda (z) (x y z))))))"));
+val it = "(lambda (x) (x (lambda (y) (x (lambda (z) (x y z))))))" : string
+- SemanticAnalysis.analysis(TagParser.stringToPE "(lambda (x) (x (lambda (y) (x (lambda (z) (x y z))))))");
+val it =
+  Abs
+    (["x"],
+     AppTP
+       (VarParam ("x",0),
+        [Abs
+           (["y"],
+            AppTP
+              (VarBound ("x",0,0),
+               [Abs
+                  (["z"],
+                   AppTP
+                     (VarBound ("x",1,0),
+                      [VarBound ("y",0,0),VarParam ("z",0)]))]))])) : Expr
+- SemanticAnalysis.analysis(TagParser.stringToPE "(define y (lambda (f) ((lambda (x) (f (lambda s (apply (x x) s)))) (lambda (x) (f (lambda s (apply (x x) s)))))))");
+val it =
+  Def
+    (VarFree "y",
+     Abs
+       (["f"],
+        AppTP
+          (Abs
+             (["x"],
+              AppTP
+                (VarBound ("f",0,0),
+                 [AbsVar
+                    ("s",
+                     AppTP
+                       (VarFree "apply",
+                        [App (VarBound ("x",0,0),[VarBound ("x",0,0)]),
+                         VarParam ("s",0)]))])),
+           [Abs
+              (["x"],
+               AppTP
+                 (VarBound ("f",0,0),
+                  [AbsVar
+                     ("s",
+                      AppTP
+                        (VarFree "apply",
+                         [App (VarBound ("x",0,0),[VarBound ("x",0,0)]),
+                          VarParam ("s",0)]))]))]))) : Expr
+- exprToString(SemanticAnalysis.analysis(TagParser.stringToPE("(lambda (x y z) x y z (set! x 10) (if x 2 (begin (set! y 20) y)) (lambda(x) x z (set! x 30) (set! z 40) (set! y 50) x z) z y)")));
+val it =
+  "(lambda (x y z) (begin (set! y (cons y 'mayer)) (set! z (cons z 'mayer)) (begin x (car y) (car z) (set! x 10) (if x 2 (begin (set-car! y 20) (car y))) (lambda (x) (begin x (car z) (set! x 30) (set-car! z 40) (set-car! y 50) x (car z))) (car z) (car y))))"
+  : string
+- exprToString(SemanticAnalysis.analysis(TagParser.stringToPE("(lambda (x k) (set! f (lambda(y) (set! x 100) (set! y 200) (lambda(z) (set! z 300) (set! y 400) (set! j 500) (+ x j)) (* x x))) (+ x x))")));
+val it =
+  "(lambda (x k) (begin (set! x (cons x 'mayer)) (begin (set! f (lambda (y) (begin (set! y (cons y 'mayer)) (begin (set-car! x 100) (set-car! y 200) (lambda (z) (begin (set! z 300) (set-car! y 400) (set! j 500) (+ (car x) j))) (* (car x) (car x)))))) (+ (car x) (car x)))))"
+  : string
+- exprToString(SemanticAnalysis.analysis(TagParser.stringToPE "(lambda (x y z k) (begin (set! y 5) (set! z 4) (lambda (r t k) (begin (set! x 3) (set! r 1) (set! z 1) (lambda (r q x) (begin (x) (y) (k) (q) (set! x 5) (set! k 1) (set! y 4)))))))"));
+val it =
+  "(lambda (x y z k) (begin (set! x (cons x 'mayer)) (set! y (cons y 'mayer)) (set! z (cons z 'mayer)) (begin (set-car! y 5) (set-car! z 4) (lambda (r t k) (begin (set! k (cons k 'mayer)) (begin (set-car! x 3) (set! r 1) (set-car! z 1) (lambda (r q x) (begin (x) ((car y)) ((car k)) (q) (set! x 5) (set-car! k 1) (set-car! y 4)))))))))"
+  : string
+- exprToString(SemanticAnalysis.analysis(TagParser.stringToPE "(lambda
+(x) (x (lambda (y) (x (lambda (z) (x y z) (lambda (y) (lambda (k) (x y
+z) x y z) x y z))) x)) x)"));
+val it =
+ "(lambda (x) (begin (x (lambda (y) (begin (x (lambda (z) (begin (x y
+z) (lambda (y) (begin (lambda (k) (begin (x y z) x y z)) x y z)))))
+x))) x))"
+ : string
+- exprToString(SemanticAnalysis.analysis(TagParser.stringToPE "(lambda
+(x) x (lambda y x y) (lambda(z) x z) (lambda(k) x k) ((lambda (j m n)
+x j (lambda(p) x j p)) x j (lambda(r) x r)) x)"));
+val it =
+ "(lambda (x) (begin x (lambda y (begin x y)) (lambda (z) (begin x
+z)) (lambda (k) (begin x k)) ((lambda (j m n) (begin x j (lambda (p)
+(begin x j p)))) x j (lambda (r) (begin x r))) x))"
+ : string
+- exprToString(SemanticAnalysis.analysis(TagParser.stringToPE "(lambda
+(x) x (lambda y x y) (lambda(z) x z (lambda(y) x z y (lambda w x z y w
+(lambda(k . t) x z y w k t p (lambda(r x) x z y w k t r))))))"));
+val it =
+ "(lambda (x) (begin x (lambda y (begin x y)) (lambda (z) (begin x z
+(lambda (y) (begin x z y (lambda w (begin x z y w (lambda (k . t)
+(begin x z y w k t p (lambda (r x) (begin x z y w k t r))))))))))))"
+ : string
+- exprToString(SemanticAnalysis.analysis(TagParser.stringToPE "(set! x
+(set! y ((lambda(x . y) (define z (lambda(a) (define t (lambda(x)
+(set! a 10) (set! t 20) (set! y 30))) (set! a (set! x 5)) (and (or
+(set! j 5) (set! x 6)) (set! y 10))))) 200 300)))"));
+val it =
+ "(set! x (set! y ((lambda (x . y) (begin (set! x (cons x 'mayer))
+(set! y (cons y 'mayer)) (define z (lambda (a) (begin (set! a (cons a
+'mayer)) ((lambda (t) (begin (set! t (cons t 'mayer)) (begin (set-car!
+t (lambda (x) (begin (set-car! a 10) (set-car! t 20) (set-car! y
+30)))) (set-car! a (set-car! x 5)) (if (or(set! j 5) (set-car! x 6))
+(set-car! y 10) #f)))) )))))) 200 300)))"
+ : string
