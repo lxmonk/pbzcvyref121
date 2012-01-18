@@ -9,7 +9,8 @@ Control.Print.printLength := 500000;
 Control.Print.stringDepth := 500000;
 Control.polyEqWarn := false;
 
-fun rel() = use("/home/lxmonk/Documents/school/BA2/compilers/hw/hw2/compiler.sml");
+fun rel() = use("/Users/admin/gmayer/work/lang/ml/compiler.sml");
+(* fun rel() = use("/home/lxmonk/Documents/school/BA2/compilers/hw/hw2/compiler.sml"); *)
 
 fun andmap f nil = true
   | andmap f (a :: s) = (f a) andalso (andmap f s);

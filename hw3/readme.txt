@@ -16,5 +16,3 @@ cheating on an assignment is a failing grade in the course.
 We proudly and steadfastly maintain that this work is entirely and
 only our own.
 
-I would like to thank Emacs and the C-x M-c M-butterfly command.
-(http://xkcd.com/378/)
