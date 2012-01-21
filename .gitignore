@@ -23,3 +23,8 @@ hw2/tests
 /hw4/arch/lib/.DS_Store
 /hw4/arch/lib/scheme/.#types.inc
 /hw4/arch/lib/scheme/.#write_sob.asm
+build/
+/hw4/arch/compiler.O
+/hw4/arch/compiler.bak.c
+/hw4/arch/lib/scheme/is_true.asm
+/hw4/arch/outFile

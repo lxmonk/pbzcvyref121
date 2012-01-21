@@ -1,6 +1,6 @@
 /* cisc.h
  * Mock-assembly programming for a CISC-like architecture
- * 
+ *
  * Programmer: Mayer Goldberg, 2010
  */
 
@@ -12,15 +12,17 @@
 #define Mega(n) (Kilo(n) << 10)
 #define Giga(n) (Mega(n) << 10)
 
-#define RAM_SIZE Mega(1)
-#define STACK_SIZE Mega(1)
+#define RAM_SIZE Kilo(512)     /*  Mega(1) */
+#define STACK_SIZE Kilo(256)   /* Mega(1) */
+/* TODO: "IMPORTANT: RETURN RAM_SIZE AND STACK_SIZE TO 1 MEGA */
+
 
 #define WORD_SIZE (sizeof(long))
 
 typedef struct Machine {
   long mem[RAM_SIZE];
   long stack[STACK_SIZE];
-  long r0, r1, r2, r3, r4, r5, r6, r7, 
+  long r0, r1, r2, r3, r4, r5, r6, r7,
        r8, r9, r10, r11, r12, r13, r14, r15;
   long sp, fp;
   long test_result;
@@ -96,7 +98,7 @@ extern Machine *machine;
 #define XOR(x, y) { (x) ^= (y); }
 #define NEG(x) { (x) = ~(x); }
 
-#define BEGIN_LOCAL_LABELS { __label__ 
+#define BEGIN_LOCAL_LABELS { __label__
 #define END_LOCAL_LABELS }
 
 #define CALL(subr) {			\
@@ -111,7 +113,7 @@ extern Machine *machine;
     goto *addr;				\
   Lcisc: ; }
 
-#define RETURN { 			\
+#define RETURN {                        \
     goto *(void *)M(stack)[--SP]; }
 
 #define NOP ;
@@ -131,9 +133,9 @@ extern Machine *machine;
   }						\
 }
 
-#define START_MACHINE 				\
-  Machine *machine = 				\
-    (Machine *)malloc(sizeof(Machine)); 	\
+#define START_MACHINE                           \
+  Machine *machine =                            \
+    (Machine *)malloc(sizeof(Machine));         \
   MOV(SP, IMM(0));				\
   MOV(ADDR(0), IMM(1))
 
