@@ -779,6 +779,8 @@ local
       | lexicalWorker (Seq(exprList), symtab) =
         Seq((map (fn expr => (lexicalWorker (expr, symtab)))
                  exprList))
+      | lexicalWorker (Or([]), symtab) =
+        lexicalWorker(Const(Bool(false)), symtab)
       | lexicalWorker (Or(exprList), symtab) =
         Or((map (fn expr => (lexicalWorker (expr, symtab)))
                 exprList))
@@ -1194,12 +1196,32 @@ local
     val t = "  "
     val tt = t ^ t
     val ttt = tt ^ tt
+    val docNl = nl ^ ttt ^ ttt ^ tt
     val is_sob_true = "IS_SOB_TRUE"
     val is_sob_void = "IS_SOB_VOID"
     val make_sob_void = "MAKE_SOB_VOID"
     val make_sob_nil = "MAKE_SOB_NIL"
     val write_sob = "WRITE_SOB"
-    val counter = ref 0;
+    (* auto generated code FOR the code generator!!  *)
+    val r0 = "R0";  val R0 = "R0"; val R1 = "R1"; val r1 = "R1"
+    val R2 = "R2";  val r2 = "R2"; val R3 = "R3"; val r3 = "R3"
+    val R4 = "R4";  val r4 = "R4"; val R5 = "R5"; val r5 = "R5"
+    val R6 = "R6";  val r6 = "R6"; val R7 = "R7"; val r7 = "R7"
+    val R8 = "R8";  val r8 = "R8"; val R9 = "R9"; val r9 = "R9"
+    val R10 = "R10"; val r10 = "R10"
+    val counter = ref 0
+    (* again, auto-generated code^2 *)
+    val T_CLOSURE = "T_CLOSURE"; val t_closure = "T_CLOSURE"
+    val T_VOID = "T_VOID"; val t_void = "T_VOID"
+    val T_NIL = "T_NIL"; val t_nil = "T_NIL"
+    val T_BOOL = "T_BOOL"; val t_bool = "T_BOOL"
+    val T_CHAR = "T_CHAR"; val t_char = "T_CHAR"
+    val T_INTEGER = "T_INTEGER"; val t_integer = "T_INTEGER"
+    val T_STRING = "T_STRING"; val t_string = "T_STRING"
+    val T_SYMBOL = "T_SYMBOL"; val t_symbol = "T_SYMBOL"
+    val T_PAIR = "T_PAIR"; val t_pair = "T_PAIR"
+    val T_VECTOR = "T_VECTOR"; val t_vector = "T_VECTOR"
+                                                 
     fun upCase(str) =
         String.implode(map Char.toUpper (String.explode(str)))
     (* convert to upper case and precede with '_' if not present. *)
@@ -1212,29 +1234,47 @@ local
     fun tag() =
         (counter := !counter + 1; Int.toString(!counter))
     fun imm(n) = "IMM(" ^ Int.toString(n) ^ ")"
+    fun Imm(s) = "IMM(" ^ s ^ ")"
     fun doc(exp : Expr) = 
         tt ^"/*" ^ nl ^ ttt ^ "code for the expression:" ^ nl ^
         ttt ^ exprToString(exp) ^ nl ^ tt ^ "*/"^ nl
     fun rem(txt) = "/* " ^ txt ^ " */" ^ nl
-    fun label(lab, numTag, docString) = lab ^ numTag ^ ":" ^ tt ^
+    fun label(lab, numTag, docString) = " " ^ lab ^ numTag ^ ":" ^ tt ^
                                         "/* " ^ docString ^ " */" ^ nl
-    fun drop(n) = " DROP(" ^ Int.toString(n) ^ ");" ^ nl
+    fun drop(n) = t ^ "DROP(" ^ Int.toString(n) ^ ");" ^ nl
+    fun drops(s) = t ^ "DROP(" ^ s ^ ");" ^ nl
+    fun push(reg, docString) =
+        t ^ "PUSH(" ^ reg ^ ");" ^ tt ^ rem(docString)
     fun pushReg(regNum, docString) =
-        " PUSH(R" ^ Int.toString(regNum) ^ ");" ^ tt ^ rem(docString)
+        t ^ "PUSH(R" ^ Int.toString(regNum) ^ ");" ^ tt ^ rem(docString)
     fun cmp(calc, docString) =
-        " CMP(" ^ calc ^ ");" ^ tt ^ rem(docString)
+        t ^ "CMP(" ^ calc ^ ");" ^ tt ^ rem(docString)
     fun call(func, docString) =
-        " CALL(" ^ func ^ ");" ^ tt ^ rem(docString)
+        t ^ "CALL(" ^ func ^ ");" ^ tt ^ rem(docString)
+    fun calla(addr, docString) =
+        t ^ "CALLA(" ^ addr ^ ");" ^ tt ^ rem(docString)
     fun movReg(reg, source, docString) =
-        " MOV(R" ^ Int.toString(reg) ^", " ^ source ^ ");" ^ tt ^ rem(docString)
+        t ^ "MOV(R" ^ Int.toString(reg) ^", " ^ source ^ ");" ^
+        tt ^ rem(docString)
+    fun mov(target, source, docString) =
+        t ^ "MOV(" ^ target ^", " ^ source ^ ");" ^ tt ^ rem(docString)
     fun jump("", target, docString) =
-        " JUMP(" ^ target ^ ");"  ^ tt ^ rem(docString)
+        t ^ "JUMP(" ^ target ^ ");"  ^ tt ^ rem(docString)
       | jump(cond, target, docString) =
-        " JUMP"^ upCase'(cond) ^ "(" ^ target ^ ");" ^ tt ^ rem(docString)
+        t ^ "JUMP"^ upCase'(cond) ^ "(" ^ target ^ ");" ^ tt ^ rem(docString)
     fun jumpEq(target, docString) =
         jump("_EQ", target, docString)
     (* shorthand for JUMP *)
     fun jmp(target, docString) = jump("", target, docString)
+    fun fparg(minor) =
+        "FPARG(" ^ Int.toString(minor) ^ ")"
+    fun indd(reg : string, offset) =
+        "INDD(" ^ reg ^ ", " ^ Int.toString(offset) ^ ")"
+    fun ind(reg) = "IND(" ^ reg ^ ")"
+    fun missing (exp, exprs, cg) =
+        nl ^ doc(exp) ^ " SHOULD BE HERE, BUT IT'S " ^
+        "NOT YET IMPLEMENTED." ^ nl ^ nl ^ cg(exprs)
+    val env = fparg(0)
     val CONCLUSION = nl ^ nl ^ rem("end of generated code. CONCLUSION:") ^
                      movReg(1, "R0", "save the result in R1") ^
                      pushReg(1, "pushing R1 for void-check") ^
@@ -1252,6 +1292,82 @@ local
                      "  STOP_MACHINE;\n\n  return 0;\n}\n"
 in
 fun cg [] = ""
+  | cg ((exp as VarParam(name, minor)) :: exprs) =
+    doc(exp) ^
+    movReg(0, fparg(2 + minor), "move param var " ^ name ^ " to R0") ^
+    cg(exprs)
+  | cg ((exp as VarBound(name, major, minor)) :: exprs) =
+    doc(exp) ^
+    mov(R0, fparg(0), "R0 <- env from FPARG(0)") ^
+    mov(R0, indd(R0, major), R0 ^ " <- env[major]") ^
+    mov(R0, indd(R0, minor), R0 ^ " <- env[major][minor]") ^
+    cg(exprs)
+  | cg ((exp as VarFree(name)) :: exprs) = missing(exp, exprs, cg)
+  | cg ((exp as Set(VarParam(name, major), value)) :: exprs) =
+    doc(exp) ^
+    rem("calculating the value of " ^ exprToString(value)) ^
+    cg([value]) ^
+    mov(fparg(2 + major), "R0", "setting FPARG(major + 2) from R0") ^
+    rem("R0 <- #Void after set.") ^
+    cg([Const(Void)]) ^
+    cg(exprs)
+  | cg ((exp as Set(VarBound(name, major, minor), value)) :: exprs) =
+    doc(exp) ^
+    rem("calculating the value of " ^ exprToString(value)) ^
+    cg([value]) ^
+    mov(R1, env, "R1 <- env") ^
+    mov(R1, indd(R1, major), "R1 <- env[major]") ^
+    mov(indd(R1, minor), R0, "env[major][minor] <- R0") ^
+    rem("R0 <- #Void after set.") ^
+    cg([Const(Void)]) ^
+    cg(exprs)
+  | cg ((exp as AppTP(FIX, ME)) :: exprs) = (print "FIX AppTP!!!!\n";
+                                            cg(App(FIX, ME) :: exprs))
+  | cg ((exp as App(operator, operands)) :: exprs) =
+    let val L_NOT_CLOSURE = "L_NOT_CLOSURE" ^ tag()
+        val L_IS_CLOSURE = "L_IS_CLOSURE" ^ tag()
+        val n_clos_tag = tag()
+    in
+        doc(exp) ^
+        concat(map (fn operand => cg([operand]) ^
+                                  push(R0, "pushing the result as an arg for" ^
+                                           docNl ^ "the upcoming call to " ^
+                                           exprToString(operator)))
+                   (rev operands)) ^
+        push(Int.toString(length operands), "pushing (n) - the number" ^
+                                            " of args") ^
+        rem("now executing proc/operator BEFORE it's application:") ^
+        cg([operator]) ^
+        cmp(ind(R0) ^ ", " ^ Imm(T_CLOSURE), "R0 must be of type" ^ docNl ^
+                                             " closure to be applied") ^
+        jump("_EQ", L_IS_CLOSURE, "only a closure can be applied as" ^ docNl
+                                  ^ "an operator. this is a run-time check") ^
+        label(L_NOT_CLOSURE, "", "a non-closure SOB was (almost) applied." ^
+                                 docNl ^ "print and goto end") ^
+        rem("printing N-CLOS"^ n_clos_tag ^ " to screen") ^
+        t ^ "OUT(IMM(2)," ^ Imm("'N'") ^ ");" ^ nl ^
+        t ^ "OUT(IMM(2)," ^ Imm("'-'") ^ ");" ^ nl ^
+        t ^ "OUT(IMM(2)," ^ Imm("'C'") ^ ");" ^ nl ^
+        t ^ "OUT(IMM(2)," ^ Imm("'L'") ^ ");" ^ nl ^
+        t ^ "OUT(IMM(2)," ^ Imm("'O'") ^ ");" ^ nl ^
+        t ^ "OUT(IMM(2)," ^ Imm("'S'") ^ ");" ^ nl ^
+        t ^ "OUT(IMM(2)," ^ Imm(n_clos_tag) ^ ");" ^ nl ^
+        t ^ "OUT(IMM(2)," ^ Imm("'\\n'") ^ ");" ^ nl ^
+        
+        jmp("END_OF_THE_WORLD", "non-closure application. stop the execution") ^
+        
+        label(L_IS_CLOSURE, "", "we didn't crash - it's a closure after all.") ^
+        push(indd(R0, 1), "pushing env") ^
+        calla(indd(R0, 2), "calling the proc (code) part of R0") ^
+        drops("2 + STARG(0)") ^
+        rem("dropping n + 2 args, according to what's on the stack now," ^ nl ^
+            "as shown in class. IS STARG(0) THE RIGHT CHOICE??") ^
+        cg(exprs)
+    end
+  | cg ((exp as Abs(params, body)) :: exprs) =
+    doc(exp) ^
+    mov(R1, env, "R1 <- env") ^
+    
   | cg ((exp as If(test, dit, dif)) :: exprs) =
     let val tag1 = tag()
     in
@@ -1293,17 +1409,40 @@ fun cg [] = ""
     doc(exp) ^
     cg(expList) ^
     cg(exprs)
-  | cg (exp :: exprs) = nl ^ doc(exp) ^ " SHOULD BE HERE, BUT IT'S " ^
-                        "NOT YET IMPLEMENTED." ^ nl ^ nl ^ cg(exprs)
+  | cg ((exp as Or(expList)) :: exprs) =
+    let val endLabel = "L_END_OR" ^ tag()
+        val test = movReg(1, "R0", "save the result in R1") ^
+                   pushReg(0, "push R0 for falsity test") ^
+                   call(is_sob_true, "test R0") ^
+                   cmp("R0, " ^ imm(1), "1 means R0 was true. goto end of or") ^
+                   drop(1) ^
+                   movReg(0, "R1", "restore the result to R0" ^ docNl ^
+                                   " (in case we end here.)") ^
+                   jumpEq(endLabel, "if this was true, goto end")
+        (* this Or is not empty - it was replaced with #f in the lexical 
+                                                                 analysis *)
+        val revExpList = rev expList
+        val last = hd(revExpList)
+        val butLaseExpList = rev(tl revExpList)
+    in
+        doc(exp) ^
+        (foldr (fn (a, b) => a ^ b) ""
+               (map (fn e => cg([e]) ^ test) butLaseExpList)) ^
+        cg ([last]) ^
+        label(endLabel, "", "end of Or expression. result is in R0")
+    end
+  | cg (exp :: exprs) = missing(exp, exprs, cg)
 fun compileSchemeFile (sourceFile, targetFile) =
     (print "TODO: IMPORTANT: RETURN RAM_SIZE AND STACK_SIZE TO 1 MEGA\n";
-    let val input = fileToString(sourceFile)
-        val program = cg(TagParser.stringToPEs(input))
-    in
-        stringToFile(fileToString("Intro") ^ program ^ CONCLUSION,
-                     targetFile)
-    end
+     let val input = fileToString(sourceFile)
+         val program =
+             cg(map SemanticAnalysis.analysis (TagParser.stringToPEs(input)))
+         val DEBUG = print("compiling:" ^ nl ^ input ^ nl)
+     in
+         stringToFile(fileToString("Intro") ^ program ^ CONCLUSION,
+                      targetFile)
+     end
     )
 end; (* of locals *)
 end; (* of structure Code_gen *)
- 
+          

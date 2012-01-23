@@ -28,3 +28,5 @@ build/
 /hw4/arch/compiler.bak.c
 /hw4/arch/lib/scheme/is_true.asm
 /hw4/arch/outFile
+/hw4/arch/genCode.c
+/hw4/arch/gn

@@ -4,9 +4,10 @@ DEP_LIST = char.lib cisc.h io.lib lib math.lib scheme.lib string.lib system.lib
 
 all: genComp.c $(DEP_LIST)
 	mkdir -p build
-	gcc -ggdb genComp.c -o build/genComp
+	gcc -E -ggdb genCode.c -o build/genCode_pre.c
+	gcc -ggdb genCode.c -o build/genCode
 	echo 'compilation of generated file (from C) done.'
-	(cd build; ./genComp)
+	(cd build; ./genCode)
 
 man: compiler.c $(DEP_LIST)
 	mkdir -p build
