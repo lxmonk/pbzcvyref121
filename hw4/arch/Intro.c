@@ -36,7 +36,7 @@ int main()
 
 #define SOB_BOOL_TRUE (ADDR(1));
 #define SOB_BOOL_FALSE (ADDR(3));
-#define SOB_NIL (M(mem)[5]);
+#define SOB_NIL (ADDR(5));
 #define SOB_VOID (ADDR(6));
 
 
@@ -50,11 +50,6 @@ int main()
     DROP(1);
     CALL(MAKE_SOB_NIL);          /* define nil */
     CALL(MAKE_SOB_VOID);
-    CALL(MAKE_SOB_NIL); 
+
 
  START_OF_GENERATED_CODE:
-
-
-
-
-

@@ -255,14 +255,14 @@
     (if (>= 1 (depth sexpr-list))
         sexpr-list
         (let* ((dep (mx (map depth sexpr-list)))
-            (init-list (make-list (1+ dep) '()))
-            (decon-list (append (list sexpr-list) (cdr init-list)))
-            (after-first-go (go-over-first-line decon-list))
-            (reslist (cons (car after-first-go)
-                           (go-over-lines (cdr after-first-go))))
-            (buttom-line (car reslist))
-            (newlist (cdr reslist)))
-       (create-let newlist buttom-line)))))
+               (init-list (make-list (1+ dep) '()))
+               (decon-list (append (list sexpr-list) (cdr init-list)))
+               (after-first-go (go-over-first-line decon-list))
+               (reslist (cons (car after-first-go)
+                          (go-over-lines (cdr after-first-go))))
+               (buttom-line (car reslist))
+               (newlist (cdr reslist)))
+          (create-let newlist buttom-line)))))
 
 
 

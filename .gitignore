@@ -30,3 +30,5 @@ build/
 /hw4/arch/outFile
 /hw4/arch/genCode.c
 /hw4/arch/gn
+/hw3/.#hw32.sml
+/hw4/arch/working_param.c
