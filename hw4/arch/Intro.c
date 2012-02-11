@@ -41,15 +41,7 @@ int main()
 
 
  CONTINUE:
-    /* initialize the 4 singletons */
-    PUSH(IMM(1));
-    CALL(MAKE_SOB_BOOL);         /* define SOB_BOOL_TRUE */
-    DROP(1);
-    PUSH(IMM(0));
-    CALL(MAKE_SOB_BOOL);         /* define SOB_BOOL_FALSE */
-    DROP(1);
-    CALL(MAKE_SOB_NIL);          /* define nil */
-    CALL(MAKE_SOB_VOID);
-
 
  START_OF_GENERATED_CODE:
+
+    /* code for auto generated constants */

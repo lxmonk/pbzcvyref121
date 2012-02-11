@@ -12,7 +12,7 @@ Control.polyEqWarn := false;
 
 val cd = OS.FileSys.chDir;
 val pwd = OS.FileSys.getDir;
-            
+val debug = true            
 fun rel() = use("/Users/admin/gmayer/work/lang/ml/compiler.sml");
 (* fun rel() = use("/home/lxmonk/Documents/school/BA2/compilers/hw/hw2/compiler.sml"); *)
 
@@ -426,7 +426,7 @@ local
       | gs (StringToken(str)::toks) = (SOME (String(str)), toks)
       | gs (SymbolToken(sym)::toks) = (SOME (Symbol(sym)), toks)
       | gs (BoolToken(bool)::toks) = (SOME (Bool(bool)), toks)
-      | gs (QuoteToken :: toks) =
+      | gs (QuoteToken :: toks) = 
         (case (gs toks) of
              (SOME(sexpr), toks) =>
              (SOME(Pair(Symbol("quote"),
@@ -1194,21 +1194,46 @@ sig
     val compileSchemeFile : string * string -> unit;
 end;
 
+          
+structure ExprMap =
+BinaryMapFn (struct
+             type ord_key = Expr
+             val compare =
+                 (fn (e1 : Expr, e2 : Expr) =>
+                     String.compare(exprToString (e1),
+                                    exprToString (e2)));
+             end);
+
+val myExpMap = ExprMap.empty;
+val myExpMap = ExprMap.insert(myExpMap, Const(Bool(true)), 1)
+val myExpMap = ExprMap.insert(myExpMap, Const(Bool(false)), 3)
+val myExpMap = ExprMap.insert(myExpMap, Const(Nil), 5)
+val myExpMap = ExprMap.insert(myExpMap, Const(Void), 6)
+(* an Expr of type Var is impossible, this is to keep 
+reference for the next empty space *)
+val myExpMap = ExprMap.insert(myExpMap, Var("next"), 7)
+
+fun insertConst(mp, expr : Expr, sizeof : int) =
+    let val next = Var("next")
+        val start = ExprMap.lookup(mp, next)
+        val withNext = ExprMap.insert(mp, next, start + sizeof)
+        val dontcare = print ("insertConst got " ^ exprToString expr ^ "\n")
+        val d21 = (case expr of
+                       VarFree(v) => print("var free " ^ v ^ "\n")
+                     | Const(String(s)) => print("string: " ^ s ^ "\n")
+                     | Const(Symbol(s)) => print("symbol: " ^ s ^ "\n")
+                     | Const(Pair(s1, s2)) => print ("pair! " ^ exprToString expr)
+                     | _ => print("+"))
+    in
+        if not (isSome (ExprMap.find(withNext, expr)))
+        then (print ("insertConst creating " ^ exprToString expr ^ "\n");
+              ExprMap.insert(withNext, expr, start))
+        else mp                 (* already in, do nothing *)
+    end
+    
 structure CodeGen : CODE_GEN =
 struct
 local
-    structure ExprMap =
-    BinaryMapFn (struct
-                 type ord_key = Expr
-                 val compare =
-                     (fn (e1 : Expr, e2 : Expr) =>
-                         String.compare(exprToString (e1),
-                                        exprToString (e2)));
-                 end);
-
-    val myExpMap = ExprMap.empty;
-    (* val myExpMap = 
-           ExprMap.insert(myExpMap, Const(Nil), 8); *)
     exception NotYetImplemented;
     val nl = "\n"
     val t = "  "
@@ -1222,12 +1247,12 @@ local
     val write_sob = "WRITE_SOB"
     val end_of_the_world = "END_OF_THE_WORLD"
     (* auto generated code FOR the code generator!!  *)
-    val r0 = "R0";  val R0 = "R0"; val R1 = "R1"; val r1 = "R1"
+    val R0 = "R0";  val r0 = "R0"; val R1 = "R1"; val r1 = "R1"
     val R2 = "R2";  val r2 = "R2"; val R3 = "R3"; val r3 = "R3"
     val R4 = "R4";  val r4 = "R4"; val R5 = "R5"; val r5 = "R5"
     val R6 = "R6";  val r6 = "R6"; val R7 = "R7"; val r7 = "R7"
     val R8 = "R8";  val r8 = "R8"; val R9 = "R9"; val r9 = "R9"
-    val R10 = "R10"; val r10 = "R10"
+    val R10 = "R10"; val r10 = "R10"; val R16 = "R16"; val r16 = "R16"
     val counter = ref 0
     (* again, auto-generated code^2 *)
     val T_CLOSURE = "T_CLOSURE"; val t_closure = "T_CLOSURE"
@@ -1244,6 +1269,10 @@ local
     val fp = "FP"; val sp = "SP"
     val make_sob_clos = "MAKE_SOB_CLOSURE"
     val make_sob_string = "MAKE_SOB_STRING"
+    val make_sob_integer = "MAKE_SOB_INTEGER"
+    val make_sob_bool = "MAKE_SOB_BOOL"
+    val make_sob_symbol = "MAKE_SOB_SYMBOL"
+    val putchar = "PUTCHAR"
     fun upCase(str) =
         String.implode(map Char.toUpper (String.explode(str)))
     (* convert to upper case and precede with '_' if not present. *)
@@ -1255,7 +1284,11 @@ local
     (* inc counter and return it's string *)
     fun tag() =
         (counter := !counter + 1; Int.toString(!counter))
-    fun imm(n) = "IMM(" ^ Int.toString(n) ^ ")"
+    fun imm(n) = if n >= 0
+                 then
+                     "IMM(" ^ Int.toString(n) ^ ")"
+                 else
+                     "IMM(-" ^ Int.toString(abs n) ^ ")"
     fun Imm(s) = "IMM(" ^ s ^ ")"
     fun doc(exp : Expr) = 
         tt ^"/*" ^ nl ^ ttt ^ "code for the expression:" ^ nl ^
@@ -1310,19 +1343,11 @@ local
         t ^ "for(" ^ loop ^") {" ^ nl ^
         tt ^ body ^ 
         t ^ "}" ^ nl
+    fun i2s(n) = Int.toString(n)
     val env = fparg(0)
     val ret = "RETURN;" ^ nl
-    val CONCLUSION = nl ^ nl ^ rem("end of generated code. CONCLUSION:") ^
-                     movReg(1, "R0", "save the result in R1") ^
-                     pushReg(1, "pushing R1 for void-check") ^
-                     call(is_sob_void, "if R0 is #Void, don't print") ^
-                     drop(1) ^
-                     cmp("R0, "^ imm(1), "1 means R0 was void, 0 means" ^
-                                         " it wasn't") ^
-                     jumpEq("END_OF_THE_WORLD", "do not print") ^
-                     pushReg(1, "push R1 for print") ^
-                     call(write_sob, "print the result before quitting") ^
-                     drop(1) ^ rem("that was useless..") ^
+    val CONCLUSION = nl ^ nl ^ rem("end of generated code. EXITING:") ^
+                     rem("that was useless..") ^
                      label("END_OF_THE_WORLD", "", "(only as we know it.)") ^
                      "  /* newline and stop machine */\n" ^
                      "  PUSH(IMM('\\n'));\n  CALL(PUTCHAR);\n" ^
@@ -1349,7 +1374,7 @@ local
             else
                 handleChars(rest, newS ^ str c)
         end
-    fun testArgNum(exp, n) = (* rem("MISSING TEST ARG NUMBER") *)
+    fun testArgNum(exp, n) = 
         let val L_bad_arg_count = "L_BAD_ARG_COUNT" ^ tag()
             val L_arg_count_ok = "L_ARG_COUNT_OK" ^ tag()
         in
@@ -1367,8 +1392,222 @@ local
         end
         
     fun cLabel(labl) = "LABEL(" ^ labl ^ ")"
+    fun lengthSexprs ([], l) = l
+      | lengthSexprs (Void :: elts, l) =
+        lengthSexprs(elts, l + 1)
+      | lengthSexprs (Nil :: elts, l) =
+        lengthSexprs(elts, l + 1)
+      | lengthSexprs(Pair(s1, s2) :: elts, l) =
+        lengthSexprs(s1 :: s2 :: elts, l) 
+      | lengthSexprs(Vector(vs) :: elts, l) =
+        lengthSexprs(elts, lengthSexprs(vs, l))
+      | lengthSexprs(Symbol(s) :: elts, l) =
+        lengthSexprs(elts, l + 5)
+      | lengthSexprs(String(s) :: elts, l) =
+        lengthSexprs(elts, l + 2 + size s)
+      | lengthSexprs(Number(n) :: elts, l) =
+        lengthSexprs(elts, l + 2)
+      | lengthSexprs(Bool(_) :: elts, l) =
+        lengthSexprs(elts, l)
+      | lengthSexprs(Char(c) :: elts, l) =
+        lengthSexprs(elts, l + 2)
+        
+    fun getCConst(C as Const(sexpr), symMap) =
+        (case sexpr of
+             Void => symMap
+           | Nil => symMap
+           | p as Pair(s1, s2) =>
+             if isSome (ExprMap.find(symMap, C))
+             then
+                 symMap
+             else
+                 (if debug then print("getCConst Pair <" ^ exprToString C ^
+                                      "> calling insertConst\n")
+                  else print("");
+                 insertConst(symMap, C, lengthSexprs([p], 0)))
+           | Vector(elts) =>
+             if isSome (ExprMap.find(symMap, C))
+             then
+                 symMap
+             else
+                 (if debug then print("getCConst Vector calling insertConst\n")
+                  else print("");
+                 insertConst(symMap, C,
+                             lengthSexprs(elts, 0) +
+                             2 + length elts))
+ (* 2 for vector (T_VECTOR and n), length elts is the *)
+ (* actual length of the vector, lengthSexprs(elts) is*)
+ (* size of the vector on the heap *)
+           | sym as  Symbol(s) =>
+             if isSome (ExprMap.find(symMap, C))
+             then
+                 symMap (* already in symtab *)
+             else
+                 (* inserting the string first, then the symbol *)
+                 (* (creating the string as well) *)
+                 (if debug then print("getCConst Symbol <" ^ exprToString C ^
+                                      "> calling insertConst\n")
+                  else print("");
+                  insertConst(insertConst(symMap, Const(String(s)),
+                                          2 + size s),
+                              C, lengthSexprs([sym], 0)))
+           | st as String(s) =>
+             if isSome(ExprMap.find(symMap, C))
+             then
+                 symMap
+             else
+                 insertConst(symMap, C, lengthSexprs([st], 0))
+           | Number(n) =>
+             if isSome (ExprMap.find(symMap, C))
+             then
+                 symMap
+             else
+                 insertConst(symMap, C, 2)
+           | Bool(_) => symMap
+           | Char(c) =>
+             if isSome (ExprMap.find(symMap, C))
+             then
+                 symMap
+             else
+                 insertConst(symMap, C, 2))
+      | getCConst(_, symMap) = symMap
+        
+    fun getCVar(V as VarFree(name), symMap) =
+        if isSome (ExprMap.find(symMap, V))
+        then
+            symMap
+        else
+            (print "\n\ngetCVar calling insertConst\n";
+             insertConst(symMap, Const(Symbol(name)), 6 + size name))
+      | getCVar(_, symMap) = symMap
+                             
     fun getConsts([], symMap) = symMap
-
+      | getConsts((C as Const(sexpr)) :: exprs, symMap) =
+        getConsts(exprs, getCConst(C, symMap))
+      | getConsts((V as VarFree(v)) :: exprs, symMap) =
+        getConsts(exprs, getCVar(V, symMap))
+      | getConsts(If(test, dit, dif) :: exprs, symMap) =
+        getConsts(exprs, getConsts([test, dit, dif], symMap))
+      | getConsts(Abs(vars, body) :: exprs, symMap) =
+        getConsts(exprs, getConsts([body], symMap))
+      | getConsts(AbsOpt(vars, extra, body) :: exprs, symMap) = 
+        getConsts(exprs, getConsts([body], symMap))
+      | getConsts(AbsVar(v, body) :: exprs, symMap) =
+        getConsts(exprs, getConsts([body], symMap))
+      | getConsts(App(operator, operands) :: exprs, symMap) =
+        getConsts(exprs, getConsts(operator :: operands, symMap))
+      | getConsts(AppTP(operator, operands) :: exprs, symMap) =
+        getConsts(exprs, getConsts(operator :: operands, symMap))
+      | getConsts(Seq(exprList) :: exprs, symMap) =
+        getConsts(exprs, getConsts(exprList, symMap))
+      | getConsts(Or(exprList) :: exprs, symMap) =
+        getConsts(exprs, getConsts(exprList, symMap))
+      | getConsts(Set(var, value) :: exprs, symMap) =
+        getConsts(exprs, getConsts([var, value], symMap))
+      | getConsts(Def(var, value) :: exprs, symMap) =
+        getConsts(exprs, getConsts([var, value], symMap))
+      | getConsts(VarBound(_,_,_) :: exprs, symMap) = 
+        getConsts(exprs, symMap)
+      | getConsts(VarParam(_,_) :: exprs, symMap) =
+        getConsts(exprs, symMap)
+      | getConsts(Var(_) :: exprs, symMap) =
+    (* bad lexical analysis. never mind ("production"" code) *)
+        getConsts(exprs, symMap)
+    fun createNumber(n, loc) =
+        pushn(n, "") ^
+        call(make_sob_integer, "creating " ^ i2s(n) ^
+                               " should be at " ^ i2s(loc)) ^
+        drop(1)
+    fun createChar(c, loc) =
+        pushn(ord c, "pushing " ^ (str c) ^ "'s ord value.") ^
+        call("MAKE_SOB_CHAR", "should be at " ^ i2s(loc)) ^
+        drop(1)
+    fun createBool(b : bool, loc) =
+        (if b
+         then pushn(1, "1 to create SOB_BOOL_TRUE")
+         else pushn(0, "0 to create SOB_BOOL_FALSE")) ^
+        call(make_sob_bool, "creating boolean. should be at 1/3. really at "
+                            ^ i2s(loc)) ^
+        drop(1)
+    fun createString(exp, s, loc) =
+        doc(exp) ^
+        concat(map (fn c => push((chrToC c), "to make a string")) (explode s)) ^
+        pushn(size s, "string's length") ^
+        call(make_sob_string, "creating the string") ^
+        drop(size s + 1)
+    fun createSymbol(s, loc, symMap) =
+        rem("creating symbol: " ^ s) ^
+        (if isSome (ExprMap.find(symMap, Const(String(s))))
+         (* string already exists *)
+         then
+             mov(R0, imm(ExprMap.lookup(symMap, Const(String(s)))),
+                 "ptr to the string \"" ^ s ^ "\" from lookup")
+         else
+             rem("first, the name.") ^
+             createString(Const(String(s)), s, loc)) ^
+        call(make_sob_symbol,"now creating the symbol")
+    fun createVector(v, loc) = "missing vector creation!!"
+    fun createPair(p, loc) = "missing pair creation!!"
+    fun genConst(C as Const(sexpr), symMap) =
+        let val optLoc = ExprMap.find(symMap, C)
+            val loc = if isSome(optLoc) then valOf optLoc
+                      else 9998877
+        in
+            (case sexpr of
+                 Void => call(make_sob_void, "create void. is at:" ^
+                                             i2s(loc) ^ " wanted: 6. CHECK!")
+               | Nil => call(make_sob_nil, "create nil. should be at 5. is at:" ^
+                                           "mem[" ^ i2s(loc) ^ "]")
+               | p as Pair(_,_) => createPair(p, loc)
+               | v as Vector(elts) => createVector(v, loc)
+               | Symbol(s) => createSymbol(s, loc, symMap)
+               | String(s) => createString(C, s, loc)
+               | Number(n : int) => createNumber(n, loc)
+               | Bool(b) => createBool(b, loc)
+               | Char(c) => createChar(c, loc))
+        end
+      | genConst(nxt as Var("next"), symMap) =
+        rem("next available place in mem should be " ^
+            i2s(ExprMap.lookup(symMap, nxt)))
+      | genConst(expr : Expr, symMap) = rem("missing genConst for: " ^
+                                            exprToString expr)
+    fun generateConstants(symMap) =
+        let val exprs = ExprMap.listItemsi symMap
+            val sorted = ListMergeSort.sort (fn (a, b) => (#2 a) > (#2 b)) exprs
+        in
+            concat(map (fn exp => genConst(exp, symMap))
+                       (map (fn t => (#1 t)) sorted))
+        end
+    fun prnR0() =
+        let val L_after_print = "L_AFTER_PRINT" ^ tag()
+        in
+            rem("End of Sexpr, printing R0 - if not <Void>") ^
+            movReg(1, "R0", "save the result in R1") ^
+            pushReg(1, "pushing R1 for void-check") ^
+            call(is_sob_void, "if R0 is #Void, don't print") ^
+            drop(1) ^
+            cmp("R0, "^ imm(1), "1 means R0 was void, 0 means" ^
+                                " it wasn't") ^
+            jumpEq(L_after_print, "do not print") ^
+            pushReg(1, "push R1 for print") ^
+            call(write_sob, "print the result before going to next Sexpr") ^
+            drop(1) ^
+            label(L_after_print, "", "") ^
+            t ^ "PUSH(IMM('\\n'))" ^ nl ^
+            call(putchar, "print the newline") ^
+            drop(1)
+        end
+    fun lookupConst (C, symMap) =
+        rem("inside lookupConst. looking for " ^ exprToString C) ^
+        (case (ExprMap.find(symMap, C)) of
+             (* no var creation yet.. FIXME *)
+             NONE => exprToString C ^ " FIXME: SHOULD BE HERE, BUT IT'S " ^
+                     "NOT YET IMPLEMENTED." ^ nl ^ nl
+           | SOME(loc) =>
+             mov(R0, i2s loc, "the address of " ^ exprToString C ^
+                              "(should be) moved to R0"))
+        
+                  
     fun run ([], _, _, _) = ""
       | run ((exp as VarParam(name, minor)) :: exprs, envR, params, symMap) =
         doc(exp) ^
@@ -1381,7 +1620,15 @@ local
         mov(R0, indd(R0, minor), R0 ^ " <- env[major][minor]") ^
         run(exprs, envR, params, symMap)
       | run ((exp as VarFree(name)) :: exprs, envR, params, symMap) =
-        missing(exp, exprs, run, envR, params, symMap)
+        doc(exp) ^
+        (case (ExprMap.find(symMap, Const(Symbol(name)))) of
+             (* no var creation yet..*)
+             NONE => exprToString exp ^ " SHOULD BE HERE, BUT IT'S " ^
+                     "NOT YET IMPLEMENTED." ^ nl ^ nl
+           | SOME(loc) =>
+             mov(R0, i2s loc, "the address of " ^ exprToString exp ^
+                              "(should be) moved to R0")) ^
+        run(exprs, envR, params, symMap)
       | run ((exp as Set(VarParam(name, major), value)) :: exprs,
             envR, params, symMap) =
         doc(exp) ^
@@ -1403,7 +1650,15 @@ local
         run([Const(Void)], envR, params, symMap) ^
         run(exprs, envR, params, symMap)
       | run ((exp as Set(VarFree(name), value)) :: exprs, envR, params, symMap) =
-        missing(exp, exprs, run, envR, params, symMap)
+        doc(exp) ^
+        push(R10, "we'll save the value of \"value\" in R10") ^
+        run([value], envR, params, symMap) ^
+        mov(R10, R0, "save the value of \"value\" in R10") ^
+        lookupConst(Const(Symbol(name)), symMap) ^
+        mov(ind(R0), R10, "assign \"value\" from R10 to " ^ name) ^
+        pop(R10, "") ^
+        run(exprs, envR, params, symMap)
+        (* missing(exp, exprs, run, envR, params, symMap) *)
       | run ((exp as AppTP(FIX, ME)) :: exprs, envR, params, symMap) =
         (print "FIX AppTP!!!!\n";
          run(App(FIX, ME) :: exprs, envR, params, symMap))
@@ -1527,10 +1782,12 @@ local
         end
       | run((exp as Const(String(s))) :: exprs, envR, params, symMap) =
         doc(exp) ^
-        concat(map (fn c => push((chrToC c), "to make a string")) (explode s)) ^
-        pushn(size s, "string's length") ^
-        call(make_sob_string, "creating the string") ^
-        drop(size s + 1) ^
+        lookupConst(exp, symMap) ^
+        (* createString(exp, s, ~1000) ^ *)
+        (* concat(map (fn c => push((chrToC c), "to make a string")) (explode s)) ^ *)
+        (* pushn(size s, "string's length") ^ *)
+        (* call(make_sob_string, "creating the string") ^ *)
+        (* drop(size s + 1) ^ *)
         run(exprs, envR, params, symMap)
       | run((exp as Const(Char(c))) :: exprs, envR, params, symMap) =
         doc(exp) ^
@@ -1544,8 +1801,12 @@ local
         call("MAKE_SOB_INTEGER", "assiging a number to R0") ^
         drop(1) ^
         run(exprs, envR, params, symMap)
+      | run((exp as Const(Symbol(name))) :: exprs, envR, params, symMap) =
+        doc(exp) ^
+        lookupConst(exp, symMap) ^
+        run(exprs, envR, params, symMap)
       | run((exp as Const(_)) :: exprs, envR, params, symMap) =
-        (* vector, pair, symbol *)
+        (* vector, pair *)
         missing(exp, exprs, run, envR, params, symMap)
       | run((exp as Seq(expList)) :: exprs, envR, params, symMap) =
         doc(exp) ^
@@ -1579,10 +1840,11 @@ local
       (*   doc(exp) ^ *)
       | run (exp :: exprs, envR, params, symMap) =
         missing(exp, exprs, run, envR, params, symMap)
-    val debug = true
-in
+    val GE = ref myExpMap
+  in
 fun cg e =
-    let val symMap = getConsts(e, myExpMap)
+    let val symMap = !GE (* getConsts(e, myExpMap) *)
+        (* val dc = print ("CONSTANTS: " ^ constantsCode) *)
     in
         run (e, [], [], symMap)
     end
@@ -1591,10 +1853,16 @@ fun compileSchemeFile (sourceFile, targetFile) =
      let val input = fileToString(sourceFile)
          val exprs =
              map SemanticAnalysis.analysis (TagParser.stringToPEs(input))
-         val program = cg exprs
+         val symMap = getConsts(exprs, myExpMap)
+         val sideEffect = (GE := symMap)
+         val constantsCode = generateConstants(symMap)
+         val program = concat(map (fn exp => (cg [exp]) ^ prnR0()) exprs)
          val DEBUG = print("Compiling:" ^ nl ^ input ^ nl)
      in
-         stringToFile(fileToString("Intro.c") ^ program ^ CONCLUSION,
+         stringToFile(fileToString("Intro.c") ^
+                      constantsCode ^
+                      program ^
+                      CONCLUSION,
                       targetFile)
      end
     )

@@ -14,6 +14,9 @@
 #include "lib/scheme/make_sob_closure.asm"
 #include "lib/scheme/make_sob_vector.asm"
 #include "lib/scheme/make_sob_string.asm"
+
+#include "lib/scheme/make_sob_symbol.asm"
+
 #include "lib/scheme/is_sob_void.asm"
 #include "lib/scheme/is_sob_nil.asm"
 #include "lib/scheme/is_sob_bool.asm"
