@@ -16,8 +16,11 @@ MAKE_SOB_SYMBOL:
   JUMP_EQ(L_FIRST_SYMBOL);
   MOV(INDD(R16, 4), R0);          /* place a ptr to this symbol in the
                                    * previous one. */
+  JUMP(L_ACTUAL_CREATE);
  L_FIRST_SYMBOL:
   MOV(R16, R0);                 /* this is now the "previous" symbol */
+  MOV(SYM_PTR, R0);              /* pointer to the first symbol in the list */
+ L_ACTUAL_CREATE:
   MOV(IND(R0), T_SYMBOL);
   MOV(INDD(R0, 1), R1);               /* place string ptr in sym[1] */
   MOV(INDD(R0, 2), IMM(0));            /* symbol NOT initialized */

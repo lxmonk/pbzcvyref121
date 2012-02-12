@@ -1188,11 +1188,7 @@ fun stringToFile (str : string, filename : string) =
 
 
     
-signature CODE_GEN =
-sig
-    val cg : Expr list -> string ;
-    val compileSchemeFile : string * string -> unit;
-end;
+
 
           
 structure ExprMap =
@@ -1204,6 +1200,12 @@ BinaryMapFn (struct
                                     exprToString (e2)));
              end);
 
+signature CODE_GEN =
+sig
+    val cg : Expr list -> string ;
+    val compileSchemeFile : string * string -> unit;
+end;
+    
 val myExpMap = ExprMap.empty;
 val myExpMap = ExprMap.insert(myExpMap, Const(Bool(true)), 1)
 val myExpMap = ExprMap.insert(myExpMap, Const(Bool(false)), 3)
@@ -1272,6 +1274,7 @@ local
     val make_sob_integer = "MAKE_SOB_INTEGER"
     val make_sob_bool = "MAKE_SOB_BOOL"
     val make_sob_symbol = "MAKE_SOB_SYMBOL"
+    val void = Const(Void)
     val putchar = "PUTCHAR"
     fun upCase(str) =
         String.implode(map Char.toUpper (String.explode(str)))
@@ -1478,7 +1481,13 @@ local
             symMap
         else
             (print "\n\ngetCVar calling insertConst\n";
-             insertConst(symMap, Const(Symbol(name)), 6 + size name))
+             let val withString =
+                     insertConst(symMap, Const(String(name)),
+                                 lengthSexprs([String(name)], 0))
+             in
+                 insertConst(withString, Const(Symbol(name)),
+                             lengthSexprs([Symbol(name)], 0))
+             end)
       | getCVar(_, symMap) = symMap
                              
     fun getConsts([], symMap) = symMap
@@ -1627,7 +1636,7 @@ local
                      "NOT YET IMPLEMENTED." ^ nl ^ nl
            | SOME(loc) =>
              mov(R0, i2s loc, "the address of " ^ exprToString exp ^
-                              "(should be) moved to R0")) ^
+                              " (should be) moved to R0")) ^
         run(exprs, envR, params, symMap)
       | run ((exp as Set(VarParam(name, major), value)) :: exprs,
             envR, params, symMap) =
@@ -1797,9 +1806,10 @@ local
         run(exprs, envR, params, symMap)
       | run((exp as Const(Number(n))) :: exprs, envR, params, symMap) =
         doc(exp) ^
-        pushn(n, "pushing integer value") ^
-        call("MAKE_SOB_INTEGER", "assiging a number to R0") ^
-        drop(1) ^
+        lookupConst(exp, symMap) ^
+        (* pushn(n, "pushing integer value") ^ *)
+        (* call("MAKE_SOB_INTEGER", "assiging a number to R0") ^ *)
+        (* drop(1) ^ *)
         run(exprs, envR, params, symMap)
       | run((exp as Const(Symbol(name))) :: exprs, envR, params, symMap) =
         doc(exp) ^
@@ -1827,17 +1837,31 @@ local
             the lexical analysis *)
             val revExpList = rev expList
             val last = hd(revExpList)
-            val butLaseExpList = rev(tl revExpList)
+            val butLastExpList = rev(tl revExpList)
         in
             doc(exp) ^
             (foldr (fn (a, b) => a ^ b) ""
                    (map (fn e => run([e], envR, params, symMap) ^ test)
-                        butLaseExpList)) ^
+                        butLastExpList)) ^
             run ([last], envR, params, symMap) ^
-            label(endLabel, "", "end of Or expression. result is in R0")
+            label(endLabel, "", "end of Or expression. result is in R0") ^
+            run(exprs, envR, params, symMap)
         end
-      (* | run ((exp as Def(var, value)) :: exprs, envR, params, symMap) = *)
-      (*   doc(exp) ^ *)
+      | run ((exp as Def(var, value)) :: exprs, envR, params, symMap) =
+        doc(exp) ^
+        push(R1, "R1 will hold the value to be assigned") ^
+        rem("now calculating the value to be assigned") ^
+        run([value], envR, params, symMap) ^
+        mov(R1, R0, "save the result in R0") ^
+        rem("now calculating the var to be assigned to: " ^ exprToString var) ^
+        run([var], envR, params, symMap) ^
+        mov(indd(R0, 2), imm(1), "this variable is now set(1)") ^
+        mov(indd(R0, 3), R1, "assiging the value from R1 to the value field R0[3]") ^
+        pop(R1, "return R1 from the stack") ^
+        rem("setting R0 to Void after Define") ^
+        lookupConst(void, symMap) ^
+        rem("end of Define expression: " ^ exprToString exp) ^
+        run(exprs, envR, params, symMap)
       | run (exp :: exprs, envR, params, symMap) =
         missing(exp, exprs, run, envR, params, symMap)
     val GE = ref myExpMap
@@ -1857,7 +1881,7 @@ fun compileSchemeFile (sourceFile, targetFile) =
          val sideEffect = (GE := symMap)
          val constantsCode = generateConstants(symMap)
          val program = concat(map (fn exp => (cg [exp]) ^ prnR0()) exprs)
-         val DEBUG = print("Compiling:" ^ nl ^ input ^ nl)
+         (* val DEBUG = print("Compiling:" ^ nl ^ input ^ nl) *)
      in
          stringToFile(fileToString("Intro.c") ^
                       constantsCode ^
@@ -1869,3 +1893,4 @@ fun compileSchemeFile (sourceFile, targetFile) =
 end; (* of locals *)
 end; (* of structure Code_gen *)
           
+

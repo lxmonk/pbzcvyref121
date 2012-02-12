@@ -24,7 +24,7 @@ typedef struct Machine {
   long stack[STACK_SIZE];
   long r0, r1, r2, r3, r4, r5, r6, r7,
        r8, r9, r10, r11, r12, r13, r14, r15, r16;
-  long sp, fp;
+  long sp, fp, sym_ptr;
   long test_result;
 } Machine;
 
@@ -55,7 +55,7 @@ extern Machine *machine;
 #define R16 (M(r16))
 #define SP (M(sp))
 #define FP (M(fp))
-
+#define SYM_PTR (M(sym_ptr))
 #define IMM(n) (L(n))
 #define IND(r) (M(mem)[(r)])
 #define INDD(r, d) (M(mem)[(r) + (d)])

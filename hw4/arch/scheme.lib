@@ -37,5 +37,52 @@
 
 {
  WRITE_SOB_SYMBOL:
+  MOV(R0, STARG(0));
+  CMP(INDD(R0, 2),0);
+  JUMP_EQ(L_EXCEPTION_VAR_NOT_BOUND);
+  MOV(R0, INDD(R0, 3));
+  PUSH(R0);
+  CALL(WRITE_SOB);
+  DROP(1);
   RETURN;
+
+ L_EXCEPTION_VAR_NOT_BOUND:
+/*  Exception: variable is not bound */
+  OUT(IMM(2), IMM('E'));
+  OUT(IMM(2), IMM('x'));
+  OUT(IMM(2), IMM('c'));
+  OUT(IMM(2), IMM('e'));
+  OUT(IMM(2), IMM('p'));
+  OUT(IMM(2), IMM('t'));
+  OUT(IMM(2), IMM('i'));
+  OUT(IMM(2), IMM('o'));
+  OUT(IMM(2), IMM('n'));
+  OUT(IMM(2), IMM(':'));
+  OUT(IMM(2), IMM(' '));
+  OUT(IMM(2), IMM('v'));
+  OUT(IMM(2), IMM('a'));
+  OUT(IMM(2), IMM('r'));
+  OUT(IMM(2), IMM('i'));
+  OUT(IMM(2), IMM('a'));
+  OUT(IMM(2), IMM('b'));
+  OUT(IMM(2), IMM('l'));
+  OUT(IMM(2), IMM('e'));
+  OUT(IMM(2), IMM(' '));
+  
+  OUT(IMM(2), IMM('i'));
+  OUT(IMM(2), IMM('s'));
+  OUT(IMM(2), IMM(' '));
+  OUT(IMM(2), IMM('n'));
+  OUT(IMM(2), IMM('o'));
+  OUT(IMM(2), IMM('t'));
+  OUT(IMM(2), IMM(' '));
+  OUT(IMM(2), IMM('b'));
+  OUT(IMM(2), IMM('o'));
+  OUT(IMM(2), IMM('u'));
+  OUT(IMM(2), IMM('n'));
+  OUT(IMM(2), IMM('d'));
+
+
+  CALL(NEWLINE);
+  HALT;
 }
