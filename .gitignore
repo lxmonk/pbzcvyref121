@@ -33,3 +33,7 @@ build/
 /hw3/.#hw32.sml
 /hw4/arch/working_param.c
 /hw4/arch/in0.scm
+/hw4/arch/binp.c
+/hw4/arch/loop.S
+/hw4/arch/loop.c
+/hw4/arch/support-code.scm

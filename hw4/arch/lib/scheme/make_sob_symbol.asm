@@ -18,14 +18,14 @@ MAKE_SOB_SYMBOL:
                                    * previous one. */
   JUMP(L_ACTUAL_CREATE);
  L_FIRST_SYMBOL:
-  MOV(R16, R0);                 /* this is now the "previous" symbol */
   MOV(SYM_PTR, R0);              /* pointer to the first symbol in the list */
  L_ACTUAL_CREATE:
+  MOV(R16, R0);                 /* this is now the "previous" symbol */
   MOV(IND(R0), T_SYMBOL);
   MOV(INDD(R0, 1), R1);               /* place string ptr in sym[1] */
   MOV(INDD(R0, 2), IMM(0));            /* symbol NOT initialized */
-  MOV(INDD(R0, 3), IMM(0xFFFFFFFF));   /* "initial" value ptr */
-  MOV(INDD(R0, 4), IMM(0xEEEEEEEE));
+  MOV(INDD(R0, 3), IMM(12345678));   /* "initial" value ptr */
+  MOV(INDD(R0, 4), IMM(11112222)) ;
   POP(R1);
   POP(FP);
   RETURN;
