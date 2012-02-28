@@ -203,29 +203,49 @@
 ;; ((lambda () (zero? 0)))
 ;; (symbol->string (string->symbol "bkjdshf"))
 ;; (string->symbol #f)
-(((lambda (a bb ccc)
-    (lambda (dddd eeeee)
-      a))
-  -1 -2 -3)
 
-(((lambda (a bb ccc)
-    (lambda (dddd eeeee)
-      bb))
-  -1 -2 -3)
- -4 -5)
+;; (((lambda (a bb ccc)
+;;     (lambda (dddd eeeee)
+;;       a))
+;;   -1 -2 -3)
+;;  -4 -5) ;;-> -1
+
+;; (((lambda (a bb ccc)
+;;     (lambda (dddd eeeee)
+;;       bb))
+;;   -1 -2 -3)
+;;  -4 -5) ;; -> -2
 
 ;; ((lambda (p)
-;;    ((lambda () p))) 7665667)
+;;    ((lambda () 0 1 1 2 3 5 8 p))) 7665667) ;; -> 7665667
 
 
+;; ((((((lambda ()
+;;        (lambda (a b c)
+;;          (lambda () 0 1 1 2 3 5 8
+;;            (lambda (d)
+;;              (lambda (e f) b)))))
+;;      )
+;;     "a1" "b2" "c3")
+;;    )
+;;   "d4")
+;;  "e5" "f6") ;; -> "b2"
+
+;; (((((lambda ()
+;;       (lambda (s . e)
+;;         (lambda (t . n)
+;;           (lambda v s))))
+;;     )
+;;    4 5)
+;;   6)
+;;  'a) ;; -> 4
 
 ;; ((((lambda (a b c)
 ;;      (lambda (g)
 ;;        (lambda (h) b)))
 ;;    1 2 3)
 ;;   4)
-;;  7) ;; ->
-2
+;;  7) ;; -> 2
 
 
 ;; ((((lambda ()
@@ -249,7 +269,7 @@
 ;;              (if (bin=? n 0)
 ;;                  1
 ;;                  (bin* n (f (bin- n 1)))))))
-;;   (f 4))
+;;   (f 5)) ;; -> 120
 
 ;; (define lst (list 1 2))
 ;; lst
@@ -261,3 +281,24 @@
 ;; (define setted (list 1 2 3 4))
 ;; (set-car! setted 'dlsfj)
 ;; setted
+(string-length "string of length 19")
+(string-ref "abc" 1)
+(string-ref "abc" 0)
+(string-ref "abc" -1)
+
+(define +
+  (letrec ((loop
+            (lambda (s)
+              (if (null? s)
+                  0
+                  (bin+ (car s)
+                        (loop (cdr s)))))))
+    (lambda s (loop s))))
+
+(+)
+(+ 1 2 3)
+
+((lambda (x) (x x 10))
+ (lambda (x n)
+   (if (zero? n) #t
+       (x x (- n 1)))))
