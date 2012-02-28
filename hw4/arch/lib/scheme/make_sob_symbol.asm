@@ -25,7 +25,7 @@ MAKE_SOB_SYMBOL:
   MOV(INDD(R0, 1), R1);               /* place string ptr in sym[1] */
   MOV(INDD(R0, 2), IMM(0));            /* symbol NOT initialized */
   MOV(INDD(R0, 3), IMM(12345678));   /* "initial" value ptr */
-  MOV(INDD(R0, 4), IMM(11112222)) ;
+  MOV(INDD(R0, 4), IMM(T_NULL_PTR)) ;
   POP(R1);
   POP(FP);
   RETURN;

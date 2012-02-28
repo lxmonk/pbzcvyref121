@@ -1014,10 +1014,12 @@ local
         let val setList = map (fn var =>
                                   Set(VarParam(var,
                                                placeFinder(var, vars)),
-                                      App(VarFree("list"),
+                                      (* App(VarFree("list"), *)
+                                      App(VarFree("cons"),
                                           [VarParam(var,
                                                     placeFinder(var,
-                                                                vars))])))
+                                                                vars)),
+                                           Const(Nil)])))
                               banged
         in
             Seq(setList @ [foldl (fn (var, e) =>
@@ -1282,12 +1284,14 @@ local
     val make_sob_bool = "MAKE_SOB_BOOL"
     val make_sob_symbol = "MAKE_SOB_SYMBOL"
     val make_sob_pair = "MAKE_SOB_PAIR"
+    val make_sob_char = "MAKE_SOB_CHAR"
     val FALSE = Const(Bool(false))
     val TRUE = Const(Bool(true))
     val VOID = Const(Void)
     val NIL = Const(Nil)
-    val t_pair = "T_PAIR"
+    val t_pair = "T_PAIR"; val T_PAIR = "T_PAIR"
     val T_EMPTY_ENV = "T_EMPTY_ENV"; val t_empty_env = "T_EMPTY_ENV"
+
     val putchar = "PUTCHAR"
     fun upCase(str) =
         String.implode(map Char.toUpper (String.explode(str)))
@@ -1354,6 +1358,8 @@ local
         t ^ "JUMP"^ upCase'(cond) ^ "(" ^ target ^ ");" ^ tt ^ rem(docString)
     fun jumpEq(target, docString) =
         jump("_EQ", target, docString)
+    fun jumpNe(target, docString) =
+        jump("_NE", target, docString)
     fun jumpLe(target, docString) =
         jump("_LE", target, docString)
     fun jumpGe(target, docString) =
@@ -1589,7 +1595,7 @@ local
                      "NOT YET IMPLEMENTED." ^ nl ^ nl
            | SOME(loc) =>
              mov(R0, i2s loc, "the address of " ^ exprToString C ^
-                              "(should be) moved to R0"))
+                              " (should be) moved to R0"))
     fun createNumber(n, loc) =
         pushn(n, "") ^
         call(make_sob_integer, "creating " ^ i2s(n) ^
@@ -1780,8 +1786,8 @@ local
             concat(map (fn operand => run([operand], envR, params,
                                           symMap) ^
                                       push(R0, "pushing the result as" ^
-                                               " an arg for" ^
-                                               docNl ^ "the upcoming call to " ^
+                                               " an arg for" ^ docNl ^
+                                               "the upcoming call to" ^
                                                docNl ^ exprToString(operator)))
                        (rev operands)) ^
             push(Int.toString(length operands), "pushing (n) - the number" ^
@@ -1814,36 +1820,20 @@ local
                 ^ nl ^ "as shown in class + 1 for stack opt/var correction.") ^
             run(exprs, envR, params, symMap)
         end
-      | run ((exp as Abs(parameters, body)) :: exprs, envR, params, symMap) =
+      | run ((exp as Abs([], body)) :: exprs, envR as [], params, symMap) =
         let val L_actual_clos = "L_ACTUAL_CLOS" ^ tag()
             val L_cont = "L_CONT" ^ tag()
         in
             doc(exp) ^
-            mov(R1, env, "R1 <- env") ^
-            push(imm(length(envR) + 1),
-                 "pushing |env| + 1 for malloc") ^
-            call(malloc,
-                 "calling malloc to make room for the extended env") ^
-            drop(1) ^
-            mov(R2, R0, "R2 <- R0. R2 is the pointer to the new env") ^
-            for("_i=0, _j=1; _i<" ^ Int.toString(length(envR)) ^ "; ++_i, ++_j",
-                mov(Indd(R2, "_j"), Indd(R1, "_i"), "R2[_j] <- R1[_i]")) ^ 
-            push(imm(length(parameters)), "pushing |parameters| for malloc") ^
-            call(malloc, "calling malloc to make room for the params in env") ^
-            drop(1) ^
-            mov(ind(R2), R0, "R2[0] <- R0 from malloc") ^
-            for("_i=0; _i<" ^ Int.toString(length parameters) ^ ";_i++",
-                mov(R3, ind(R2), "R3 <- R2[0]") ^ tt ^
-                mov(Indd(R3, "_i"), Fparg("2 + _i"),
-                         "R2[0][_i] <- FPARG(2 + _i)")) ^
+            rem("empty-env empty-params special case. NO env extension") ^
             jmp(L_cont, "the actual code for the closure" ^
                         " will be jumped over.") ^
             label(L_actual_clos, "",
                   "the closure code to be executed on applic") ^
             push(fp, "") ^
             mov(fp, sp, "") ^
-            testArgNum(exp, length parameters) ^
-            run([body], parameters :: envR, params, symMap) ^
+            testArgNum(exp, 0) ^
+            run([body], envR, params, symMap) ^
             pop(fp, "") ^
             ret ^
             label(L_cont, "",
@@ -1854,11 +1844,70 @@ local
             push(R2, "R2 is the pointer to env (runtime)") ^
             call(make_sob_clos, "create the closure") ^
             drop(2) ^
-            nl ^rem("END of Abs:" ^  exprToString(exp)) ^ nl ^ nl ^
-            run(exprs, parameters :: envR, params, symMap)
+            nl ^
+            rem("END of Abs:" ^  exprToString(exp)) ^ nl ^ nl ^
+            run(exprs, envR, params, symMap)
         end
 
 
+        
+      | run ((exp as Abs(parameters, body)) :: exprs, envR, params, symMap) =
+        let val L_actual_clos = "L_ACTUAL_CLOS" ^ tag()
+            val L_cont = "L_CONT" ^ tag()
+        in
+            doc(exp) ^
+            push(R1, "will hold env") ^
+            push(R2, "will point to new env") ^
+            push(R3, "will hold ptr to ") ^
+            mov(R1, env, "R1 <- env") ^
+            push(imm(length(envR) + 1),
+                 "pushing |env| + 1 for malloc") ^
+            call(malloc,
+                 "calling malloc to make room for the extended env") ^
+            drop(1) ^
+            mov(R2, R0, "R2 <- R0. R2 is the pointer to the new env") ^
+            for("_i=0, _j=1; _i<" ^ Int.toString(length(envR)) ^ "; ++_i, ++_j",
+                mov(Indd(R2, "_j"), Indd(R1, "_i"), "R2[_j] <- R1[_i]")) ^
+            (* if (length parameters) >= 1 *)
+            (* then *)
+            push(imm(length(parameters)), "pushing |parameters| for malloc") ^
+            call(malloc, "calling malloc to make room for the params in env") ^
+            drop(1) ^
+            mov(ind(R2), R0, "R2[0] <- R0 from malloc") ^
+            for("_i=0; _i<" ^ Int.toString(length parameters) ^ ";_i++",
+                mov(R3, ind(R2), "R3 <- R2[0]") ^ tt ^
+                mov(Indd(R3, "_i"), Fparg("2 + _i"),
+                    "R2[0][_i] <- FPARG(2 + _i)")) ^
+            (* else                (* zero-arg lambda *) *)
+            (*     push(imm(1), "handling empty lambda - with empty env") ^ *)
+            (*     call(malloc, "calling malloc to make room for the ZERO params in env") ^ *)
+            (*     drop(1) ^ *)
+            jmp(L_cont, "the actual code for the closure" ^
+                        " will be jumped over.") ^
+
+            label(L_actual_clos, "",
+                  "the closure code to be executed on applic") ^
+            push(fp, "") ^
+            mov(fp, sp, "") ^
+            testArgNum(exp, length parameters) ^
+            run([body], parameters :: envR, params, symMap) ^
+            pop(fp, "") ^
+            ret ^
+
+            label(L_cont, "",
+                  "prepare the closure IN COMPILE TIME for:" ^ docNl ^
+                  exprToString exp) ^
+            (* push code; push env; call make_sob_clos *)
+            push(cLabel(L_actual_clos), "pushing code part of the closure") ^
+            push(R2, "R2 is the pointer to env (runtime)") ^
+            call(make_sob_clos, "create the closure") ^
+            drop(2) ^
+            pop(R3, "") ^
+            pop(R2, "") ^
+            pop(R1, "") ^
+            nl ^rem("END of Abs:" ^  exprToString(exp)) ^ nl ^ nl ^
+            run(exprs, parameters :: envR, params, symMap)
+        end
       | run ((exp as AbsOpt(parameters, rest, body)) :: exprs,
              envR, params, symMap) =
         let val L_actual_clos = "L_ACTUAL_OPT_CLOS" ^ tag()
@@ -2369,6 +2418,75 @@ local
             pop(R2, "") ^
             pop(R1, "")
         end
+    fun createUnaFn(symMap, fname, scmSym, prog) =
+        createBinF(symMap, fname, scmSym, prog)
+    fun typeP(typeConst, scmSym, symMap) =
+        let val tg = tag()
+        in
+            testArgNum(Const(Symbol(scmSym)), 1) ^
+            Cmp(ind(fparg(2)), typeConst,
+                "is the arg of type " ^ typeConst ^ "?") ^
+            jumpEq("L_" ^ typeConst ^ "_RESULT_TRUE" ^ tg,
+                   "jump if it's the type we want") ^
+            lookupConst(FALSE, symMap) ^
+            jmp("L_" ^ typeConst ^ "_TEST_DONE" ^ tg, "") ^
+            label("L_" ^ typeConst ^ "_RESULT_TRUE", tg, "") ^
+            lookupConst(TRUE, symMap) ^
+            label("L_" ^ typeConst ^ "_TEST_DONE", tg, "")
+        end
+    fun changeCastCode(oldType, newType, scmSym, lab, ctor) =
+        let val tg = tag()
+        in
+            rem("code for " ^ scmSym) ^
+            testArgNum(Const(Symbol(scmSym)), 1) ^
+            Cmp(ind(fparg(2)), oldType,
+                "old value is of the right type") ^
+            jumpNe("L_" ^ lab ^ "WRONG_ARG_TYPE" ^ tg, "") ^
+            push(indd(fparg(2), 1), "value to create new value") ^
+            call(ctor,
+                 "creating the new return type (" ^ newType ^ ")") ^
+            drop(1) ^ 
+            jmp("L_" ^ lab ^ "_END" ^ tg, "done") ^
+            label("L_" ^ lab ^ "WRONG_ARG_TYPE", tg, "") ^
+            prnStr("Exception in " ^ scmSym ^ ": wrong arg type") ^
+            jmp(end_of_the_world, "exiting") ^
+            label("L_" ^ lab ^ "_END", tg, "done")
+        end
+    val string_to_symbol_code =
+        testArgNum(Const(Symbol("string->symbol")), 1) ^
+        Cmp(ind(fparg(2)), T_STRING,
+            "should be a string for string->symbol") ^
+        jumpNe("L_STRING_TO_SYMBOL_NOT_STRING", "") ^
+        mov(R0, fparg(2), "R0 <- address of string") ^
+        call("FIND_SYMBOL",
+             "we'll get the address of an existing symbol" ^
+             " in R0 or 0 otherwise") ^
+        Cmp(R0, imm(0), "0 means no such symbol exists") ^
+        jumpNe("L_STRING_TO_SYMBOL_DONE",
+               "R0 is the ptr to (an existing) symbol") ^
+        mov(R0, fparg(2), "R0 <- address of string") ^
+        call(make_sob_symbol, "creating a new symbol") ^
+        jmp("L_STRING_TO_SYMBOL_DONE", "done") ^
+        
+        label("L_STRING_TO_SYMBOL_NOT_STRING", "", "") ^
+        prnStr("Exception in string->symbol: not a string") ^
+        jmp(end_of_the_world, "exiting") ^
+        
+        label("L_STRING_TO_SYMBOL_DONE", "", "")
+    val symbol_to_string_code =
+        testArgNum(Const(Symbol("symbol->string")), 1) ^
+        Cmp(ind(fparg(2)), T_SYMBOL,
+            "should be a symbol for symbol->string") ^
+        jumpNe("L_SYMBOL_TO_STRING_NOT_SYMBOL", "") ^
+        mov(R0, indd(fparg(2), 1),
+            "any symbol has a ptr to it's string name") ^
+        jmp("L_SYMBOL_TO_STRING_DONE", "done") ^
+
+        label("L_SYMBOL_TO_STRING_NOT_SYMBOL", "", "") ^
+        prnStr("Exception in symbol->string: not a symbol") ^
+        jmp(end_of_the_world, "exiting") ^
+
+        label("L_SYMBOL_TO_STRING_DONE", "", "")
     fun createBuiltins(symMap) =
         createBinP(symMap) ^ createBinM(symMap) ^
         createBinMul(symMap) ^ createBinDiv(symMap) ^
@@ -2379,12 +2497,47 @@ local
         createBinF(symMap, "CDR", "cdr", cxrCode(symMap, "cdr")) ^
         createBinF(symMap, "CONS", "cons", consCode(symMap)) ^
         createBinF(symMap, "SET_CAR", "set-car!", setCarCode(symMap)) ^
+        createUnaFn(symMap, "BOOLEANP", "boolean?",
+                    typeP(T_BOOL, "boolean?", symMap)) ^
+        createUnaFn(symMap, "CHARP", "char?",
+                    typeP(T_CHAR, "char?", symMap)) ^
+        createUnaFn(symMap, "INTEGERP", "integer?",
+                    typeP(T_INTEGER, "integer?", symMap)) ^
+        createUnaFn(symMap, "NUMBERP", "number?",
+                    typeP(T_INTEGER, "number?", symMap)) ^
+        createUnaFn(symMap, "PAIRP", "pair?",
+                    typeP(T_PAIR, "pair?", symMap)) ^
+        createUnaFn(symMap, "PROCEDUREP", "procedure?",
+                    typeP(T_CLOSURE, "procedure?", symMap)) ^
+        createUnaFn(symMap, "STRINGP", "string?",
+                    typeP(T_STRING, "string?", symMap)) ^
+        createUnaFn(symMap, "SYMBOLP", "symbol?",
+                    typeP(T_SYMBOL, "string?", symMap)) ^
+        createUnaFn(symMap, "CHAR_TO_INTEGER", "char->integer",
+                    changeCastCode(T_CHAR, T_INTEGER, "char->integer",
+                                   "CHAR_TO_INTEGER",
+                                   make_sob_integer)) ^
+        createUnaFn(symMap, "INTEGER_TO_CHAR", "integer->char",
+                    changeCastCode(T_INTEGER, T_CHAR, "integer->char",
+                                   "INTEGER_TO_CHAR", make_sob_char)) ^
+        createUnaFn(symMap, "STRING_TO_SYMBOL", "string->symbol",
+                    string_to_symbol_code) ^
+        createUnaFn(symMap, "SYMBOL_TO_STRING", "symbol->string",
+                    symbol_to_string_code) ^
         rem("End of Constants' code.")
 
     val GE = ref ExprMap.empty;;
     val prolog =
-        "(define list (lambda args args))" 
-
+        "(define list (lambda args args))" ^ nl ^
+        "(define zero? (lambda (n) (and (integer? n) (bin=? n 0))))"
+    val initStack =
+        rem("initializing the stack, pushing fake fp, " ^ docNl ^
+            "ret-address, empty env and 0 (arg number)") ^
+        push(imm(0), "no args given") ^
+        push(t_empty_env, "initial empty env") ^
+        push(cLabel(end_of_the_world), "the ultimate return address") ^
+        push(imm(0), "fake fp") ^
+        mov(fp, sp, "after initial stack hack")
 
 in
 fun cg e =
@@ -2405,7 +2558,8 @@ fun compileSchemeFile (sourceFile, targetFile) =
          val symMap = getConsts(exprs, myExpMap)
          val sideEffect = (GE := symMap)
          val constantsCode = generateConstants(symMap) ^
-                             createBuiltins(symMap)
+                             createBuiltins(symMap) ^
+                             initStack
          val program =
              concat(map (fn exp => (cg [exp]) ^ prnR0()) exprs)
      in
@@ -2419,6 +2573,13 @@ fun compileSchemeFile (sourceFile, targetFile) =
 end; (* of locals *)
 end; (* of structure Code_gen *)
 
+          if debug
+          then
+              print "CodeGen.compileSchemeFile(\"inFile.scm\", \"genCode.c\")\n"
+          else
+              print ""
+              
+          
           (* if you've got all the way down here, reading, *)
           (* it's safe to assume you're the first one to do so.. :) *)
 

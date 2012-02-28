@@ -77,9 +77,14 @@ extern Machine *machine;
 #define JUMP_NE(label) { if (M(test_result) != 0) goto label; }
 #define JUMP(label) { goto label; }
 #define JUMPA(address) { goto *address; }
-#define PUSH(x) { M(stack)[SP++] = (x); }
-#define POP(x) { (x) = M(stack)[--SP]; }
-#define DROP(n) { SP -= (n); }
+#define PUSH(x) { M(stack)[SP++] = (x);         \
+                  M(stack)[SP] = (-181); }
+/* #define POP(x) { (x) = M(stack)[--SP]; } */
+#define POP(x) { (x) = M(stack)[--SP];\
+        M(stack)[((SP))] = (-181);}
+/* #define DROP(n) { SP -= (n); } */
+#define DROP(n) { SP -= (n);                \
+                  M(stack)[((SP))] = (-181);}
 #define MOV(x, y) { (x) = (y); }
 
 #define DECR(x) { --(x); }

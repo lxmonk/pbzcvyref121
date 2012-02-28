@@ -21,8 +21,9 @@
 
 ;; (((lambda (x1 x2)
 ;;      (lambda (x3) x1))
-;;     '() #t)
-;;    #t)     ;; -> #f
+;;     #f #t)
+;;  #t)     ;; -> #f
+
 ;; (#f #f #t '()) ;; -> not a closure
 
 ;; (((lambda (x)
@@ -30,13 +31,13 @@
 ;;      x)) #f) #t) ;; -> #f
 
 ;; (((lambda (x y)
-;;    (lambda (z) x))
-;;  '() #f)
-;; #t)  ;; -> '()
+;;     (lambda (z) x))
+;;   '() #f)
+;;  #t)  ;; -> '()
 
 ;; ((((lambda (x)
 ;;      (lambda (y)
-;;         (lambda (z) x)))
+;;        (lambda (z) x)))
 ;;    #f)
 ;;   #t)
 ;;  #t)  ;; -> #f
@@ -174,7 +175,73 @@
 ;;       (bin* n (fact (bin- n 1)))))
 ;; (fact 5) ;; -> 120
 
-(letrec ((g 1)) g)
+
+;; (boolean? #t) ;; -> #t
+;; (define c #\a)
+;; (char? c)
+;; (char->integer c)
+;; (char? c)
+;; (number? c)
+;; (integer->char 97)
+;; (char->integer (integer->char 105))
+;; "^^ 105 ^^"
+;; #\a
+;; (integer? 6)
+;; (integer? '())
+;; (number? 50000)
+;; (number? #f)
+;; (pair? '(3 . 4))
+;; (pair? #f)
+;; (procedure? (lambda (a) a))
+;; (procedure? #f)
+;; (string? "a string")
+;; (string? #f)
+;; (symbol? 'a)
+;; (symbol? #f)
+;; (zero? 0)
+;; (zero? 3)
+;; ((lambda () (zero? 0)))
+;; (symbol->string (string->symbol "bkjdshf"))
+;; (string->symbol #f)
+(((lambda (a bb ccc)
+    (lambda (dddd eeeee)
+      a))
+  -1 -2 -3)
+
+(((lambda (a bb ccc)
+    (lambda (dddd eeeee)
+      bb))
+  -1 -2 -3)
+ -4 -5)
+
+;; ((lambda (p)
+;;    ((lambda () p))) 7665667)
+
+
+
+;; ((((lambda (a b c)
+;;      (lambda (g)
+;;        (lambda (h) b)))
+;;    1 2 3)
+;;   4)
+;;  7) ;; ->
+2
+
+
+;; ((((lambda ()
+;;      (lambda ()
+;;        (lambda () 55))))))
+
+;; ((lambda (p)
+;;    ((lambda () p))) 7665667)
+
+;; ((lambda (p)
+;;    (begin (set! p 10)
+;;           ((lambda () ((lambda (a) p) #f))))) #t)
+
+;; (letrec ((g 1)) g)
+
+
 ;; (letrec ((f (lambda (n) n))) f)
 
 ;; (letrec ((f
