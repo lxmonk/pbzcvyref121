@@ -2409,6 +2409,16 @@ local
         push(fparg(2), "car for pair creation") ^
         call(make_sob_pair, "create a pair") ^
         drop(2)
+    val remainderCode =
+        rem("code for remainder") ^
+        testArgNum(Const(Symbol("remainder")), 2) ^
+        mov(R0, "REM((" ^ indd(fparg(2), 1) ^ ")," ^
+                " (" ^ indd(fparg(3), 1) ^ "))",
+            "get the remainder") ^
+        push(R0, "for returned integer creation") ^
+        call(make_sob_integer, "") ^
+        drop(1) 
+        
     fun setCarCode(symMap) =
         let val L_is_pair = "L_IS_PAIR" ^ tag()
         in
@@ -2552,8 +2562,97 @@ local
         jmp(end_of_the_world, "halting") ^
         
         label("L_STRING_REF_DONE", "", "")
-    (* val string_set_code = *)
+    fun string_set_code(symMap) =
+        testArgNum(Const(Symbol("string-set!")), 3) ^
+        Cmp(ind(fparg(2)), T_STRING, "string is first arg") ^
+        jumpNe("L_STRING_SET_NOT_STRING", "") ^
+        Cmp(ind(fparg(3)), T_INTEGER, "second arg is integer") ^
+        jumpNe("L_STRING_SET_NOT_INTEGER", "") ^
+        Cmp(ind(fparg(4)), T_CHAR, "3rd arg is char") ^
+        jumpNe("L_STRING_SET_NOT_CHAR", "") ^
+        Cmp(indd(fparg(2), 1), indd(fparg(3), 1),
+            "checking 2nd arg is in bounds (legal index)") ^
+        jumpLe("L_STRING_SET_ILLEGAL_IDX", "illegal index") ^
+        Cmp(indd(fparg(3), 1), imm(0), "n should be non-negative") ^
+        jumpLt("L_STRING_SET_ILLEGAL_IDX", "negtive idx forbidden.") ^
+           
+        mov(R0, fparg(2), "R0 <- ptr to string") ^
+        add(R0, imm(2), "go past type and length") ^
+        add(R0, indd(fparg(3), 1), "get desired index") ^
+        mov(ind(R0), indd(fparg(4), 1),
+            "set the char to the value given") ^
+        lookupConst(VOID, symMap) ^
+        jmp("L_STRING_SET_DONE", "") ^
+
+        label("L_STRING_SET_NOT_STRING", "", "") ^
+        prnStr("Exception in string-set!: not a string") ^
+        jmp(end_of_the_world, "halting") ^
+
         
+        label("L_STRING_SET_NOT_INTEGER", "", "") ^
+        prnStr("Exception in string-set!: not a valid index") ^
+        jmp(end_of_the_world, "halting") ^
+        
+        label("L_STRING_SET_NOT_CHAR", "", "") ^
+        prnStr("Exception in string-set!: not a character") ^
+        jmp(end_of_the_world, "halting") ^
+        
+        label("L_STRING_SET_ILLEGAL_IDX", "", "") ^
+        prnStr("Exception in string-set!: not a valid index") ^
+        jmp(end_of_the_world, "halting") ^
+        
+        label("L_STRING_SET_DONE", "", "")
+
+    fun eqCode(symMap) =
+        label("L_START_EQP", "", "") ^
+        testArgNum(Const(Symbol("eq?")), 2) ^
+        Cmp(fparg(2), fparg(3), "compare addresses") ^
+        jumpEq("L_EQP_RETURN_TRUE", "") ^
+        Cmp(ind(fparg(2)), ind(fparg(3)), "compare types") ^
+        jumpNe("L_EQP_RETURN_FALSE", "") ^
+
+        Cmp(ind(fparg(2)), T_SYMBOL, "compare addresses failed") ^
+        jumpNe("L_EQP_RETURN_FALSE", "") ^
+        
+        Cmp(ind(fparg(2)), T_PAIR, "compare addresses failed") ^
+        jumpNe("L_EQP_RETURN_FALSE", "") ^
+        Cmp(ind(fparg(2)), T_STRING, "compare addresses failed") ^
+        jumpNe("L_EQP_RETURN_FALSE", "") ^
+        Cmp(ind(fparg(2)), T_VECTOR, "compare addresses failed") ^
+        jumpNe("L_EQP_RETURN_FALSE", "") ^
+        Cmp(ind(fparg(2)), T_VOID, "compare addresses failed") ^
+        jumpNe("L_EQP_RETURN_FALSE", "") ^
+        Cmp(ind(fparg(2)), T_NIL, "compare addresses failed") ^
+        jumpNe("L_EQP_RETURN_FALSE", "") ^
+        Cmp(ind(fparg(2)), T_CLOSURE, "compare addresses failed") ^
+        jumpNe("L_EQP_RETURN_FALSE", "") ^
+
+        label("L_EQP_COMPARE_VALUES", "", "") ^
+        (* Cmp(ind(fparg(2)), T_SYMBOL, "compare values for symbols") ^ *)
+        (* jumpEq("L_EQP_COMPARE_SYMBOLS", "") ^ *)
+        (* rem("else..") ^ *)
+        Cmp(indd(fparg(2), 1), indd(fparg(3), 1), "compare values") ^
+        jumpEq("L_EQP_RETURN_TRUE", "they are equal") ^
+        jmp("L_EQP_RETURN_FALSE", "they are not") ^
+
+        label("L_EQP_COMPARE_SYMBOLS", "", "") ^
+        mov(R0, fparg(2), "obj1 - to get the symbol value") ^
+        call("VAL_L_SOB_SYMBOL", "get the value") ^
+        mov(fparg(2), R0, "update value of obj1 from R0") ^
+        mov(R0, fparg(3), "obj2 - to get the symbol value") ^
+        call("VAL_L_SOB_SYMBOL", "get the value") ^
+        mov(fparg(3), R0, "update the value of obj2 from R0") ^
+        jmp("L_START_EQP", "tail recursion at it's best") ^
+        
+        label("L_EQP_RETURN_FALSE", "", "") ^
+        lookupConst(FALSE, symMap) ^
+        jmp("L_EQP_DONE", "done") ^
+
+        label("L_EQP_RETURN_TRUE", "", "") ^
+        lookupConst(TRUE, symMap) ^
+        jmp("L_EQP_DONE", "done") ^
+        
+        label("L_EQP_DONE", "", "")
     fun createBuiltins(symMap) =
         createBinP(symMap) ^ createBinM(symMap) ^
         createBinMul(symMap) ^ createBinDiv(symMap) ^
@@ -2595,8 +2694,12 @@ local
                     string_len_code) ^
         createNaryFn(symMap, "STRING_REF", "string-ref",
                    string_ref_code) ^
-        (* createNaryFn(symMap, "STRING_SET", "string-set!", *)
-        (*              string_set_code) ^ *)
+        createNaryFn(symMap, "STRING_SET", "string-set!",
+                     string_set_code symMap) ^
+        createNaryFn(symMap, "REMAINDER", "remainder",
+                     remainderCode) ^
+        createNaryFn(symMap, "__EQP__", "eq?",
+                     eqCode symMap) ^
         rem("End of Constants' code.")
 
     val GE = ref ExprMap.empty;;

@@ -16,6 +16,7 @@
 #include "lib/scheme/make_sob_string.asm"
 
 #include "lib/scheme/make_sob_symbol.asm"
+#include "lib/scheme/make_sob_gensym.asm"
 #include "lib/scheme/find_symbol.asm"
 
 #include "lib/scheme/is_sob_void.asm"

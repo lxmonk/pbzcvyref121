@@ -282,23 +282,103 @@
 ;; (set-car! setted 'dlsfj)
 ;; setted
 (string-length "string of length 19")
-(string-ref "abc" 1)
-(string-ref "abc" 0)
-(string-ref "abc" -1)
+;; (string-ref "abc" 1)
+;; (string-ref "abc" 0)
+;; (string-ref "abc" 1)
+;; (let ((s "abc"))
+;;   (string-set! s 0 #\Z)
+;;   s)
 
-(define +
-  (letrec ((loop
-            (lambda (s)
-              (if (null? s)
-                  0
-                  (bin+ (car s)
-                        (loop (cdr s)))))))
-    (lambda s (loop s))))
+;; (remainder 16 4) ;; -> 0
+;; (remainder 5 2)  ;; -> 1
+;; (remainder -45 7)  ;; ->  -3
+;; (remainder 10 -3)  ;; -> 1
+;; (remainder -17 -9)  ;; -> -8
 
-(+)
-(+ 1 2 3)
+;; (eq? 'a 3) ;; -> #f
+;; (eq? #t 't) ;; ->  #f
+;; (eq? "abc" 'abc)  ;; -> #f
+;; (eq? "hi" '(hi))   ;; ->#f
+;; (eq? #f '())   ;; -> #f
 
-((lambda (x) (x x 10))
- (lambda (x n)
-   (if (zero? n) #t
-       (x x (- n 1)))))
+;; (eq? 3 53344)   ;; -> #f
+;; (eq? 3 3)   ;; -> #t
+
+;; (let ((three 3))
+;;   (eq? 3 three)) ;; -> #t
+
+
+;; (eq? #\a #\b) ;; ->  #f
+;; (eq? #\a #\a) ;; -> #t
+
+;; (eq? #t #t)  ;; -> #t
+;; (eq? #f #f)  ;; -> #t
+;; (eq? #t #f)  ;; -> #f
+;; (eq? (null? '()) #t)  ;; -> #t
+;; (eq? (null? '(a)) #f)  ;; -> #t
+
+;; (eq? (cdr '(a)) '())  ;; -> #t
+
+;; (eq? 'a 'a)  ;; -> #t
+;; (eq? 'a 'b)  ;; -> #f
+;; (eq? 'a (string->symbol "a"))  ;; -> #t
+
+;; (eq? '(a) '(b))  ;; -> #f
+;; (eq? '(a) '(a)) ;; -> unspecified
+;; (let ((x '(a . b))) (eq? x x))  ;; -> #t
+;; (let ((x (cons 'a 'b)))
+;;   (eq? x x)) ;; -> #t
+
+;; (eq? (cons 'a 'b) (cons 'a 'b))  ;; -> #f
+
+;; (eq? "abc" "cba")   ;; -> #f
+;; (eq? "abc" "abc")   ;; -> #t
+;; (let ((x "hi")) (eq? x x))   ;; ->#t
+;; (let ((x (symbol->string 'hi))) (eq? x x))  ;; -> #t
+;; (eq?
+;;   (symbol->string 'hi)
+;;   (symbol->string 'hi))  ;; -> #t
+
+
+
+;; (eq? car car)  ;; -> #t
+;; (eq? car cdr) ;; ->  #f
+;; (let ((f (lambda (x) x)))
+;;   (eq? f f))  ;; -> #t
+
+
+;; (eq? (lambda (x) x) (lambda (y) y)) ;; -> #f
+
+;; (let ((f (lambda (x)
+;;            (lambda ()
+;;              (set! x (+ x 1))
+;;              x))))
+;;   (eq? (f 0) (f 0))) ;; -> #f
+
+
+;; (define +
+;;   (letrec ((loop
+;;             (lambda (s)
+;;               (if (null? s)
+;;                   0
+;;                   (bin+ (car s)
+;;                         (loop (cdr s)))))))
+;;     (lambda s (loop s))))
+
+;; (+)
+;; (+ 1 2 3)
+
+;; ((lambda (x) (x x 10))
+;;  (lambda (x n)
+;;    (if (zero? n) #t
+;;        (x x (- n 1)))))
+
+
+
+
+;; (eq? '#(a) '#(b))  ;; -> #f
+;; (eq? '#(a) '#(a))   ;; -> unspecified
+;; (let ((x '#(a))) (eq? x x))   ;; ->#t
+;; (let ((x (vector 'a)))
+;;   (eq? x x))   ;; ->#t
+;; (eq? (vector 'a) (vector 'a)) ;; ->  #f
