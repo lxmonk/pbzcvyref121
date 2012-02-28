@@ -1275,6 +1275,7 @@ local
     val R6 = "R6";  val r6 = "R6"; val R7 = "R7"; val r7 = "R7"
     val R8 = "R8";  val r8 = "R8"; val R9 = "R9"; val r9 = "R9"
     val R10 = "R10"; val r10 = "R10"; val R16 = "R16"; val r16 = "R16"
+    val R11 = "R11"; val R12 = "R12"; val R13 = "R13"
     val FP = "FP"; val fp = "FP"; val SP = "SP"; val sp = "SP"
     val counter = ref 0
     (* again, auto-generated code *)
@@ -1303,6 +1304,7 @@ local
     val NIL = Const(Nil)
     val t_pair = "T_PAIR"; val T_PAIR = "T_PAIR"
     val T_EMPTY_ENV = "T_EMPTY_ENV"; val t_empty_env = "T_EMPTY_ENV"
+    val T_GENSYM = "T_GENSYM"; val t_gensym = "T_GENSYM"
 
     val putchar = "PUTCHAR"
     fun upCase(str) =
@@ -1356,6 +1358,9 @@ local
         t ^ "SUB((" ^ target ^ "), (" ^ source ^ "));" ^ tt ^ rem(docString)
     fun mul(target, source, docString) =
         t ^ "MUL((" ^ target ^ "), (" ^ source ^ "));" ^ tt ^ rem(docString)
+
+    fun REM(target, source, docString) =
+        t ^ "REM((" ^ target ^ "), (" ^ source ^ "));" ^ tt ^ rem(docString)
     fun inc(target, docString) =
         t ^ "INCR(" ^ target ^ ");" ^ tt ^ rem(docString)
     fun dec(target, docString) =
@@ -1380,12 +1385,16 @@ local
         jump("_LT", target, docString)
     (* shorthand for JUMP *)
     fun jmp(target, docString) = jump("", target, docString)
+    fun jmpa(target, docString) =
+        t ^ "JUMPA(" ^ target ^");" ^ tt ^ rem(docString)
     fun fparg(minor) =
         "FPARG(" ^ Int.toString(minor) ^ ")"
     fun Fparg(str) =
         "FPARG((" ^ str ^ "))"
     fun starg(minor) =
         "STARG((" ^ Int.toString(minor) ^ "))"
+    fun stack(n : string) =
+        "STACK((" ^ n ^ "))"
     fun indd(reg : string, offset) =
         "INDD((" ^ reg ^ "), (" ^ Int.toString(offset) ^ "))"
     fun Indd(reg : string, offset : string) =
@@ -2447,7 +2456,7 @@ local
         end
     fun createUnaFn(symMap, fname, scmSym, prog) =
         createNaryFn(symMap, fname, scmSym, prog)
-    fun typeP(typeConst, scmSym, symMap) =
+    fun typeP(typeConst, scmSym, symMap, alternativeType) =
         let val tg = tag()
         in
             testArgNum(Const(Symbol(scmSym)), 1) ^
@@ -2455,6 +2464,14 @@ local
                 "is the arg of type " ^ typeConst ^ "?") ^
             jumpEq("L_" ^ typeConst ^ "_RESULT_TRUE" ^ tg,
                    "jump if it's the type we want") ^
+            (if alternativeType = typeConst
+             then
+                 ""
+             else
+                 Cmp(ind(fparg(2)), alternativeType,
+                     "is the arg of type " ^ alternativeType ^ "?") ^
+                 jumpEq("L_" ^ typeConst ^ "_RESULT_TRUE" ^ tg,
+                        "jump if it's the type we want")) ^
             lookupConst(FALSE, symMap) ^
             jmp("L_" ^ typeConst ^ "_TEST_DONE" ^ tg, "") ^
             label("L_" ^ typeConst ^ "_RESULT_TRUE", tg, "") ^
@@ -2502,6 +2519,8 @@ local
         label("L_STRING_TO_SYMBOL_DONE", "", "")
     val symbol_to_string_code =
         testArgNum(Const(Symbol("symbol->string")), 1) ^
+        Cmp(ind(fparg(2)), T_GENSYM, "gensym gets special treatment") ^
+        jumpEq("L_SYMBOL_TO_STRING_GENSYM", "") ^
         Cmp(ind(fparg(2)), T_SYMBOL,
             "should be a symbol for symbol->string") ^
         jumpNe("L_SYMBOL_TO_STRING_NOT_SYMBOL", "") ^
@@ -2513,6 +2532,24 @@ local
         prnStr("Exception in symbol->string: not a symbol") ^
         jmp(end_of_the_world, "exiting") ^
 
+        label("L_SYMBOL_TO_STRING_GENSYM", "", "") ^
+        rem("FIXME") ^
+        push("'g'", "") ^
+        mov(R0, indd(fparg(2), 1), "") ^
+        REM(R0, imm(10), "") ^
+        add(R0, Imm("'0'"), "") ^
+        push(R0, "") ^
+        push(imm(2), "") ^
+        call(make_sob_string, "") ^
+        drop(3) ^
+        jmp("L_SYMBOL_TO_STRING_DONE", "done") ^
+        
+        (* push(R9, "will be our counter") ^ *)
+        (* mov(R9, imm(1), "for the g before the number") ^ *)
+        (* push(Imm("'g'"), "for gensym string") ^ *)
+        (* mov(R0, indd(fparg(2), 1), "R0 <- gensym's number") ^ *)
+            
+        (* pop(R10, "") ^ *)
         label("L_SYMBOL_TO_STRING_DONE", "", "")
     val string_len_code =
         testArgNum(Const(Symbol("string-length")), 1) ^
@@ -2653,6 +2690,69 @@ local
         jmp("L_EQP_DONE", "done") ^
         
         label("L_EQP_DONE", "", "")
+    val gensymCode =
+        rem("gensym code") ^
+        testArgNum(Const(Symbol("gensym")), 0) ^
+        call("MAKE_SOB_GENSYM", "")
+    fun applyCode (symMap) =
+        rem("code for apply") ^
+        mov(R6, imm(0), "counter of elements in the list") ^
+        mov(R7, fparg(2), "R7 <- ptr to f") ^
+        mov(R8, stack(FP ^ " - 2"), "R8 <- retrun address") ^
+        testArgNum(Const(Symbol("apply")), 2) ^
+        Cmp(ind(fparg(2)), T_CLOSURE, "1st arg should be closure") ^
+        jumpNe("L_APPLY_NOT_CLOS", "") ^
+        Cmp(ind(fparg(3)), T_PAIR, "") ^
+        jumpEq("L_APPLY_EXPAND_LIST", "") ^
+        Cmp(ind(fparg(3)), T_NIL, "") ^
+        jumpEq("L_APPLY_PUSH_N", "") ^
+        prnStr("Exception in apply: not a proper list") ^
+        jmp("END_OF_THE_WORLD", "sorry.") ^
+
+        label("L_APPLY_EXPAND_LIST", "", "") ^
+        push(imm(500), "hope that's enough") ^
+        call(malloc, "copy list to heap") ^
+        drop(1) ^
+        mov(R12, R0,
+            "R12 is the ptr to the start of the list (on heap)") ^
+        mov(R11, fparg(3), "R11 <- list ptr") ^
+        dec(R0, "only once so the loop will work") ^
+        label("L_APPLY_EXPAND_LIST_LOOP", "", "") ^
+        inc(R6, "one more element") ^
+        inc(R0, "R0++") ^
+        mov(ind(R0), indd(R11, 1), "store element in heap") ^
+        Cmp(ind(indd(R11, 2)), T_NIL, "is this the last element?") ^
+        jumpEq("L_APPLY_PUSH_LIST", "from heap") ^
+        mov(R11, indd(R11, 2), "R11 <- next element") ^
+        jmp("L_APPLY_EXPAND_LIST_LOOP", "loop") ^
+
+        label("L_APPLY_PUSH_LIST", "", "") ^
+        mov(R13, FP, "R13 <- FP") ^
+        sub(R13, imm(6), "R13 <- &FPARG(3)") ^
+        label("L_APPLY_PUSH_LIST_LOOP", "", "loop start point") ^
+        Cmp(R0, R12, "R0 ? R12") ^
+        jumpLt("L_APPLY_PUSH_N", "done pushing the list to heap") ^
+        mov(stack(R13), ind(R0), "push to stack (reverse order)") ^
+        inc(R13, "") ^
+        dec(R0, "") ^
+        jmp("L_APPLY_PUSH_LIST_LOOP", "") ^
+        
+        label("L_APPLY_PUSH_N", "", "push n onto stack") ^
+        mov(stack(R13), R6, "push n (from R6) onto stack") ^
+        inc(R13, "") ^
+        mov(stack(R13), indd(R7, 1),
+            "push f's env (from R7) onto stack") ^
+        inc(R13, "") ^
+        mov(stack(R13), R8, "ret address (from R8) pushed") ^
+        inc(R13, "one more, for SP") ^
+        mov(SP, R13, "re-adjust SP") ^
+        mov(FP, SP, "re-adjust FP") ^
+        jmpa(indd(R7, 2), "jump to f's code section") ^
+        
+        label("L_APPLY_NOT_CLOS", "", "") ^
+        prnStr("Exception: attempt to apply non-procedure") ^
+        jmp("END_OF_THE_WORLD", "sorry.") 
+        
     fun createBuiltins(symMap) =
         createBinP(symMap) ^ createBinM(symMap) ^
         createBinMul(symMap) ^ createBinDiv(symMap) ^
@@ -2664,21 +2764,21 @@ local
         createNaryFn(symMap, "CONS", "cons", consCode(symMap)) ^
         createNaryFn(symMap, "SET_CAR", "set-car!", setCarCode(symMap)) ^
         createUnaFn(symMap, "BOOLEANP", "boolean?",
-                    typeP(T_BOOL, "boolean?", symMap)) ^
+                    typeP(T_BOOL, "boolean?", symMap, T_BOOL)) ^
         createUnaFn(symMap, "CHARP", "char?",
-                    typeP(T_CHAR, "char?", symMap)) ^
+                    typeP(T_CHAR, "char?", symMap, T_CHAR)) ^
         createUnaFn(symMap, "INTEGERP", "integer?",
-                    typeP(T_INTEGER, "integer?", symMap)) ^
+                    typeP(T_INTEGER, "integer?", symMap, T_INTEGER)) ^
         createUnaFn(symMap, "NUMBERP", "number?",
-                    typeP(T_INTEGER, "number?", symMap)) ^
+                    typeP(T_INTEGER, "number?", symMap, T_INTEGER)) ^
         createUnaFn(symMap, "PAIRP", "pair?",
-                    typeP(T_PAIR, "pair?", symMap)) ^
+                    typeP(T_PAIR, "pair?", symMap, T_PAIR)) ^
         createUnaFn(symMap, "PROCEDUREP", "procedure?",
-                    typeP(T_CLOSURE, "procedure?", symMap)) ^
+                    typeP(T_CLOSURE, "procedure?", symMap, T_CLOSURE)) ^
         createUnaFn(symMap, "STRINGP", "string?",
-                    typeP(T_STRING, "string?", symMap)) ^
+                    typeP(T_STRING, "string?", symMap, T_STRING)) ^
         createUnaFn(symMap, "SYMBOLP", "symbol?",
-                    typeP(T_SYMBOL, "string?", symMap)) ^
+                    typeP(T_SYMBOL, "string?", symMap, T_GENSYM)) ^
         createUnaFn(symMap, "CHAR_TO_INTEGER", "char->integer",
                     changeCastCode(T_CHAR, T_INTEGER, "char->integer",
                                    "CHAR_TO_INTEGER",
@@ -2700,6 +2800,10 @@ local
                      remainderCode) ^
         createNaryFn(symMap, "__EQP__", "eq?",
                      eqCode symMap) ^
+        createNaryFn(symMap, "GEN_SYM", "gensym",
+                     gensymCode) ^
+        createNaryFn(symMap, "APPLY", "apply",
+                    applyCode(symMap)) ^
         rem("End of Constants' code.")
 
     val GE = ref ExprMap.empty;;

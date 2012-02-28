@@ -64,6 +64,7 @@ extern Machine *machine;
 #define STACK(n) (M(stack)[n])
 #define STARG(n) (STACK(SP-n-2))
 #define FPARG(n) (STACK(FP-n-3))
+#define RETADD   (STACK(FP-4))
 #define LOCAL(n) (STACK(FP+n))
 #define LABEL(l) (L(&&l))
 

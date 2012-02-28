@@ -281,7 +281,7 @@
 ;; (define setted (list 1 2 3 4))
 ;; (set-car! setted 'dlsfj)
 ;; setted
-(string-length "string of length 19")
+;; (string-length "string of length 19")
 ;; (string-ref "abc" 1)
 ;; (string-ref "abc" 0)
 ;; (string-ref "abc" 1)
@@ -356,14 +356,14 @@
 ;;   (eq? (f 0) (f 0))) ;; -> #f
 
 
-;; (define +
-;;   (letrec ((loop
-;;             (lambda (s)
-;;               (if (null? s)
-;;                   0
-;;                   (bin+ (car s)
-;;                         (loop (cdr s)))))))
-;;     (lambda s (loop s))))
+(define +
+  (letrec ((loop
+            (lambda (s)
+              (if (null? s)
+                  0
+                  (bin+ (car s)
+                        (loop (cdr s)))))))
+    (lambda s (loop s))))
 
 ;; (+)
 ;; (+ 1 2 3)
@@ -382,3 +382,54 @@
 ;; (let ((x (vector 'a)))
 ;;   (eq? x x))   ;; ->#t
 ;; (eq? (vector 'a) (vector 'a)) ;; ->  #f
+
+;; (symbol? (gensym))
+;; (symbol? "d")
+;; (string? "string")
+;; (pair? #f)
+;; (gensym)
+
+;; (let ((a (gensym))
+;;       (b (gensym)))
+;;   (cons a b))
+
+;; (let ((a (gensym)))
+;;   (eq? a a)) ;; -> #t
+
+;; (symbol->string (gensym))
+;; (symbol->string (gensym))
+;; (symbol->string (gensym))
+;; (symbol->string (gensym))
+;; (symbol->string (gensym))
+;; (symbol->string (gensym))
+;; (symbol->string (gensym))
+;; (gensym)
+;; (gensym)
+;; (gensym)
+;; (gensym)
+;; (symbol->string (gensym))
+;; (symbol->string (gensym))
+;; (symbol->string (gensym))
+
+(define -
+  (lambda (a . s)
+    (if (null? s)
+        (bin- 0 a)
+        (bin- a (apply + s)))))
+
+
+
+(- 1 2 3)
+
+
+;; ((lambda (a . s) s) 1 2 3)
+;; ((lambda (a . s) (apply + s)) 1 2 3)
+;; (+ 1 2 3 4 5)
+;; (apply + '(1 2 3))
+;; (apply + '(2))
+;; (apply + '())
+;; (bin- 1 2) ;; -> -1
+;; (apply bin- '(1 2)) ;; -> -1
+;; (apply bin- '(2 90)) ;; -> -88
+;; (apply bin- '(1000 3)) ;; -> 997
+;; (apply + (list (apply + '(4 5 6 7 100)))) ;; -> 122

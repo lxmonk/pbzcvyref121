@@ -38,6 +38,19 @@
 #include "lib/scheme/is_sob_true.asm"
 
 {
+ WRITE_SOB_GENSYM:
+  MOV(R0, STARG(0)); /* R0 <- ptr to gensym */
+  PUSH(FP);
+  MOV(FP, SP);
+  PUSH(INDD(R0, 1));
+  PUSH(IMM('g'));
+  CALL(PUTCHAR);
+  DROP(1);
+  CALL(WRITE_INTEGER);
+  DROP(1);
+  POP(FP);
+  RETURN;
+  
  WRITE_SOB_SYMBOL:
   MOV(R0, STARG(0)); /* R0 <- ptr to symbol */
   PUSH(FP);
