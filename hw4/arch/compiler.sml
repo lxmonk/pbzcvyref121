@@ -12,7 +12,7 @@ Control.polyEqWarn := false;
 
 val cd = OS.FileSys.chDir;
 val pwd = OS.FileSys.getDir;
-val debug = false
+val debug = true
 fun rel() = use("/Users/admin/gmayer/work/lang/ml/compiler.sml");
 (* fun rel() = use("/home/lxmonk/Documents/school/BA2/compilers/hw/hw2/compiler.sml"); *)
 
@@ -1213,8 +1213,8 @@ local
          (* "bin>","bin<=", "bin>=", *)
          "apply",
          "boolean?", "car", "cdr", "char->integer", "char?", "cons",
-         "eq?", "gensym", "integer?", "integer->char", "make-string",
-         "make-vector", "null?", "number?", "pair?", "procedure?",
+         "eq?", "gensym", "integer?", "integer->char", "asm-make-string",
+         "asm-make-vector", "null?", "number?", "pair?", "procedure?",
          "remainder", "set-car!", "set-cdr!", "string->symbol",
          "string-length", "string-ref", "string-set!", "string?",
          "symbol?", "symbol->string", "vector-length", "vector-ref",
@@ -1276,6 +1276,7 @@ local
     val R8 = "R8";  val r8 = "R8"; val R9 = "R9"; val r9 = "R9"
     val R10 = "R10"; val r10 = "R10"; val R16 = "R16"; val r16 = "R16"
     val R11 = "R11"; val R12 = "R12"; val R13 = "R13"
+    val R14 = "R14"; val R15 = "R15"
     val FP = "FP"; val fp = "FP"; val SP = "SP"; val sp = "SP"
     val counter = ref 0
     (* again, auto-generated code *)
@@ -1298,6 +1299,7 @@ local
     val make_sob_symbol = "MAKE_SOB_SYMBOL"
     val make_sob_pair = "MAKE_SOB_PAIR"
     val make_sob_char = "MAKE_SOB_CHAR"
+    val make_sob_vector = "MAKE_SOB_VECTOR"
     val FALSE = Const(Bool(false))
     val TRUE = Const(Bool(true))
     val VOID = Const(Void)
@@ -1411,12 +1413,7 @@ local
     fun i2s(n) = Int.toString(n)
     val env = fparg(0)
     val ret = "RETURN;" ^ nl
-    val CONCLUSION = nl ^ nl ^ rem("end of generated code. EXITING:") ^
-                     rem("that was useless..") ^
-                     label("END_OF_THE_WORLD", "", "(only as we know it.)") ^
-                     "  /* newline and stop machine */\n" ^
-                     "  PUSH(IMM('\\n'));\n  CALL(PUTCHAR);\n" ^
-                     "  STOP_MACHINE;\n\n  return 0;\n}\n"
+
     fun prnStr(s) =
         nl ^
         concat(map (fn c => if c <> #"\\"
@@ -1481,7 +1478,7 @@ local
       | lengthSexprs(Pair(s1, s2) :: elts, l) =
         lengthSexprs((* s1 :: s2 ::  *)elts, l + 3)
       | lengthSexprs(Vector(vs) :: elts, l) =
-        lengthSexprs(elts, lengthSexprs(vs, l))
+        lengthSexprs(elts, length vs + 2 + l)
       | lengthSexprs(Symbol(s) :: elts, l) =
         lengthSexprs(elts, l + 5)
       | lengthSexprs(String(s) :: elts, l) =
@@ -1512,16 +1509,22 @@ local
                   in
                       insertConst(s2map, C, lengthSexprs([p], 0))
                   end)
-           | Vector(elts) =>
+           | v as Vector(elts) =>
              if isSome (ExprMap.find(symMap, C))
              then
                  symMap
              else
-                 (if debug then print("getCConst Vector calling insertConst\n")
-                  else print("");
-                 insertConst(symMap, C,
-                             lengthSexprs(elts, 0) +
-                             2 + length elts))
+                 ((if debug then print("getCConst Vector calling insertConst\n")
+                  else print(""));
+                  let val updatedSymMap =
+                          foldl (fn (exp, sMap) =>
+                                    getCConst(Const(exp), sMap))
+                                symMap
+                                elts
+                  in
+                  insertConst(updatedSymMap, C,
+                              lengthSexprs([v], 0))
+                  end)
  (* 2 for vector (T_VECTOR and n), length elts is the *)
  (* actual length of the vector, lengthSexprs(elts) is*)
  (* size of the vector on the heap *)
@@ -1660,14 +1663,25 @@ local
         call(make_sob_symbol,"now creating the symbol")
         handle NotFound => (print ("NotFound in createSymbol " ^
                             s ^ nl); raise MyNotFound)
-    fun createVector(v, loc) = "missing vector creation!!"
+    fun createVector(v as Vector(elts), loc, symMap) =
+        rem("creating vector: " ^ exprToString (Const(v)) ^
+            "should be at " ^ i2s loc) ^
+
+        concat(map (fn sexp => lookupConst(Const(sexp), symMap) ^
+                               push(R0, "for Vector creation"))
+                   elts) ^
+        push(imm(length elts), "no. of elements in Vector") ^
+        call(make_sob_vector, "") ^
+        drop(length elts + 1) ^
+        rem("done creating Vector " ^ exprToString (Const(v)))
+      | createVector(_) = raise NeverSayNever
     fun createPair(p as Pair(s1, s2), loc, symMap) =
         rem("creating pair: " ^ sexprToString p ^ " should be at " ^
             i2s loc) ^
         let val car_ = lookupConst(Const(s1), symMap)
             val cdr_ = lookupConst(Const(s2), symMap)
         in
-            doc(Const(s1)) ^
+            doc(Const(p)) ^
             cdr_ ^
             push(R0, "pushing ptr to the second pair-member (cdr)") ^
             car_ ^
@@ -1701,7 +1715,7 @@ local
                                  "create nil. should be at 5. is at:" ^
                                  "mem[" ^ i2s(loc) ^ "]")
                    | p as Pair(_,_) => createPair(p, loc, symMap)
-                   | v as Vector(elts) => createVector(v, loc)
+                   | v as Vector(elts) => createVector(v, loc, symMap)
                    | Symbol(s) => createSymbol(s, loc, symMap)
                    | String(s) => createString(C, s, loc)
                    | Number(n : int) => createNumber(n, loc)
@@ -1724,7 +1738,7 @@ local
             concat(map (fn exp => genConst(exp, symMap))
                        (map (fn t => (#1 t)) sorted))
         end
-    fun prnR0() =
+    fun prnR0(symMap) =
         let val L_after_print = "L_AFTER_PRINT" ^ tag()
         in
             rem("End of Sexpr, printing R0 - if not <Void>") ^
@@ -1742,9 +1756,17 @@ local
             label(L_after_print, "", "") ^
             t ^ "PUSH(IMM('\\n'))" ^ nl ^
             call(putchar, "print the newline") ^
-            drop(1)
+            drop(1) ^
+            lookupConst(VOID, symMap)
         end
-        
+    fun CONCLUSION(symMap) =
+        nl ^ nl ^ rem("end of generated code. EXITING:") ^
+        rem("that was useless..") ^
+        label("END_OF_THE_WORLD", "", "(only as we know it.)") ^
+        prnR0(symMap) ^
+        "  /* newline and stop machine */\n" ^
+        "  PUSH(IMM('\\n'));\n  CALL(PUTCHAR);\n" ^
+        "  STOP_MACHINE;\n\n  return 0;\n}\n"
                   
     fun run ([], _, _, _) = ""
       | run ((exp as VarParam(name, minor)) :: exprs, envR, params, symMap) =
@@ -1800,9 +1822,90 @@ local
         pop(R10, "") ^
         run(exprs, envR, params, symMap)
         (* missing(exp, exprs, run, envR, params, symMap) *)
-      | run ((exp as AppTP(FIX, ME)) :: exprs, envR, params, symMap) =
-        (print "" (* ^ "FIX AppTP!!!!\n *);
-         run(App(FIX, ME) :: exprs, envR, params, symMap))
+      | run ((exp as AppTP(operator, operands)) :: exprs,
+             envR, params, symMap) =
+        (* let val L_NOT_CLOSURE = "L_APP_TP_NOT_CLOSURE" ^ tag() *)
+        (*     val L_IS_CLOSURE = "L_APP_TP_IS_CLOSURE" ^ tag() *)
+        (*     val L_APP_TP_LOOP = "L_APP_TP_LOOP" ^ tag() *)
+        (*     val L_APP_TP_GOTO_CODE = "L_APP_TP_GOTO_CODE" ^ tag() *)
+        (*     val L_APP_TP_DONT_OVERRIDE_INIT_STACK = *)
+        (*         "L_APP_TP_DONT_OVERRIDE_INIT_STACK" ^ tag() *)
+        (*     val L_APP_TP_REALLY_DONE = "L_APP_TP_REALLY_DONE" ^ tag() *)
+        (*     val n_clos_tag = tag() *)
+        (* in *)
+        (*     doc(exp) ^ rem("in tail position!") ^ *)
+        (*     push(imm(~100), "empty room Opt/Var stack correction") ^ *)
+        (*     concat(map (fn operand => run([operand], envR, params, *)
+        (*                                   symMap) ^ *)
+        (*                               push(R0, "pushing the result as" ^ *)
+        (*                                        " an arg for" ^ docNl ^ *)
+        (*                                        "the upcoming call to" ^ *)
+        (*                                        docNl ^ exprToString(operator))) *)
+        (*                (rev operands)) ^ *)
+        (*     push(i2s (length operands), "pushing (n) - the number" ^ *)
+        (*                                 " of args for the application") ^ *)
+        (*     rem("now executing proc/operator BEFORE it's application:") ^ *)
+        (*     run([operator], envR, params, symMap) ^ *)
+        (*     cmp(ind(R0) ^ ", " ^ Imm(T_CLOSURE), "R0 must be of type" ^ docNl ^ *)
+        (*                                          " closure to be applied") ^ *)
+        (*     jump("_EQ", L_IS_CLOSURE, "only a closure can be applied as" ^ docNl *)
+        (*                               ^ "an operator. this is a run-time check") ^ *)
+        (*     label(L_NOT_CLOSURE, "", "a non-closure SOB was (almost) applied." ^ *)
+        (*                              docNl ^ "print and goto end") ^ *)
+        (*     rem("printing N-CLOS"^ n_clos_tag ^ " to screen") ^ *)
+        (*     prnStr("Exception: attempt to apply non-procedure") ^ *)
+        (*     (if debug *)
+        (*      then *)
+        (*          t ^ "OUT(IMM(2)," ^ Imm("'N'") ^ ");" ^ nl ^ *)
+        (*          t ^ "OUT(IMM(2)," ^ Imm("'-'") ^ ");" ^ nl ^ *)
+        (*          t ^ "OUT(IMM(2)," ^ Imm("'C'") ^ ");" ^ nl ^ *)
+        (*          t ^ "OUT(IMM(2)," ^ Imm("'L'") ^ ");" ^ nl ^ *)
+        (*          t ^ "OUT(IMM(2)," ^ Imm("'O'") ^ ");" ^ nl ^ *)
+        (*          t ^ "OUT(IMM(2)," ^ Imm("'S'") ^ ");" ^ nl ^ *)
+        (*          prnStr(" came from N-CLOS" ^ n_clos_tag) *)
+        (*      else "") ^ *)
+        (*     t ^ "OUT(IMM(2)," ^ Imm("'\\n'") ^ ");" ^ nl ^ *)
+        (*     jmp("END_OF_THE_WORLD", "non-closure application. stop the execution") ^ *)
+            
+        (*     label(L_IS_CLOSURE, "", "we didn't crash - it's a closure after all.") ^ *)
+        (*     push(indd(R0, 1), "pushing env") ^ *)
+        (*     dec(FP, "peeking at old_fp") ^ *)
+        (*     Cmp(stack(FP), imm(0), "don't override init stack") ^ *)
+        (*     inc(FP, "return FP to normal") ^ *)
+        (*     jumpEq(L_APP_TP_DONT_OVERRIDE_INIT_STACK, "") ^ *)
+        (*     rem("AppTP correction") ^ *)
+        (*     mov(R14, FP, "R14 <- FP for stack manipulation") ^ *)
+        (*     dec(R14, "now pointing to old_fp") ^ *)
+        (*     mov(FP, stack(R14), "FP <- old_fp") ^ *)
+        (*     dec(R14, "now pointing to parent's return address") ^ *)
+        (*     push(stack(R14), "pushing old return address") ^ *)
+        (*     (* sub(R14, imm(2), "now pointing to parent's n") ^ *) *)
+        (*     add(R14, imm(2), "now pointing to the 1st elements to be moved") ^ *)
+        (*     mov(R15, SP, "pointer to top of stack (to stop copying)") ^ *)
+        (*     mov(SP, FP, *)
+        (*         "this isn't wrong - FP points to the 1st element to be overriden (I hope)") ^ *)
+        (*     calla(cLabel("DEBUGGG"), "for debugging") ^ *)
+        (*     label(L_APP_TP_LOOP, "", "") ^ *)
+        (*     Cmp(R14, R15, "are we done?") ^ *)
+        (*     jumpEq(L_APP_TP_GOTO_CODE, "done copying") ^ *)
+        (*     push(stack(R14), "SP is down there") ^ *)
+        (*     inc(R14, "R14++") ^ *)
+        (*     jmp(L_APP_TP_LOOP, "") ^ *)
+            
+        (*     label(L_APP_TP_GOTO_CODE, "", "") ^ *)
+        (*     jmpa(indd(R0, 2), "calling the proc (code) part of R0") ^ *)
+        (*     jmp(L_APP_TP_REALLY_DONE, "") ^ *)
+
+        (*     label(L_APP_TP_DONT_OVERRIDE_INIT_STACK, "", "") ^ *)
+        (*     calla(indd(R0, 2), "calling the proc (code) part of R0") ^ *)
+
+        (*     label(L_APP_TP_REALLY_DONE, "", "") ^ *)
+        (*     drops("3 + STARG(0)") ^ *)
+        (*     rem("dropping n + 2 + 1 args, according to what's on the stack now," *)
+        (*         ^ nl ^ "as shown in class + 1 for stack opt/var correction.") ^ *)
+        (*     run(exprs, envR, params, symMap) *)
+        (* end *)
+         run(App(operator, operands) :: exprs, envR, params, symMap)
       | run ((exp as App(operator, operands)) :: exprs, envR, params, symMap) =
         let val L_NOT_CLOSURE = "L_NOT_CLOSURE" ^ tag()
             val L_IS_CLOSURE = "L_IS_CLOSURE" ^ tag()
@@ -2565,6 +2668,22 @@ local
         jmp(end_of_the_world, "halting") ^
         
         label("L_STRING_LENGTH_DONE", "", "")
+
+    val vector_len_code =
+        testArgNum(Const(Symbol("vector-length")), 1) ^
+        Cmp(ind(fparg(2)), T_VECTOR, "should be a vector..") ^
+        jumpNe("L_VECTOR_LENGTH_NOT_VECTOR", "") ^
+        push(indd(fparg(2), 1), "vector[1] has the length") ^
+        call(make_sob_integer, "") ^
+        drop(1) ^
+        jmp("L_VECTOR_LENGTH_DONE", "done") ^
+
+        label("L_VECTOR_LENGTH_NOT_VECTOR", "", "") ^
+        prnStr("Exception in vector-length: not a vector") ^
+        jmp(end_of_the_world, "halting") ^
+        
+        label("L_VECTOR_LENGTH_DONE", "", "")
+        
     val string_ref_code =
         testArgNum(Const(Symbol("string-ref")), 2) ^
         Cmp(ind(fparg(2)), T_STRING, "string is first arg") ^
@@ -2599,6 +2718,43 @@ local
         jmp(end_of_the_world, "halting") ^
         
         label("L_STRING_REF_DONE", "", "")
+
+
+    val vector_ref_code =
+        testArgNum(Const(Symbol("vector-ref")), 2) ^
+        Cmp(ind(fparg(2)), T_VECTOR, "vector is first arg") ^
+        jumpNe("L_VECTOR_REF_NOT_VECTOR", "") ^
+        Cmp(ind(fparg(3)), T_INTEGER, "second arg is integer") ^
+        jumpNe("L_VECTOR_REF_NOT_INTEGER", "") ^
+        Cmp(indd(fparg(2), 1), indd(fparg(3), 1),
+            "checking 2nd arg is in bounds (legal index)") ^
+        jumpLe("L_VECTOR_REF_ILLEGAL_IDX", "illegal index") ^
+        Cmp(indd(fparg(3), 1), imm(0), "n should be non-negative") ^
+        jumpLt("L_VECTOR_REF_ILLEGAL_IDX", "negtive idx forbidden.") ^
+           
+        mov(R0, fparg(2), "R0 <- ptr to vector") ^
+        add(R0, imm(2), "go past type and length") ^
+        add(R0, indd(fparg(3), 1), "get desired index") ^
+        mov(R0, ind(R0), "R0 should hold the wanted element") ^
+        jmp("L_VECTOR_REF_DONE", "") ^
+
+        label("L_VECTOR_REF_NOT_VECTOR", "", "") ^
+        prnStr("Exception in vector-ref: not a vector") ^
+        jmp(end_of_the_world, "halting") ^
+        
+        label("L_VECTOR_REF_NOT_INTEGER", "", "") ^
+        prnStr("Exception in vector-ref: not a valid index") ^
+        jmp(end_of_the_world, "halting") ^
+        
+        label("L_VECTOR_REF_ILLEGAL_IDX", "", "") ^
+        prnStr("Exception in vector-ref: not a valid index") ^
+        jmp(end_of_the_world, "halting") ^
+        
+        label("L_VECTOR_REF_DONE", "", "")
+
+        
+
+        
     fun string_set_code(symMap) =
         testArgNum(Const(Symbol("string-set!")), 3) ^
         Cmp(ind(fparg(2)), T_STRING, "string is first arg") ^
@@ -2640,6 +2796,112 @@ local
         
         label("L_STRING_SET_DONE", "", "")
 
+    fun vector_set_code(symMap) =
+        testArgNum(Const(Symbol("vector-set!")), 3) ^
+        Cmp(ind(fparg(2)), T_VECTOR, "vector is first arg") ^
+        jumpNe("L_VECTOR_SET_NOT_VECTOR", "") ^
+        Cmp(ind(fparg(3)), T_INTEGER, "second arg is integer") ^
+        jumpNe("L_VECTOR_SET_NOT_INTEGER", "") ^
+        Cmp(indd(fparg(2), 1), indd(fparg(3), 1),
+            "checking 2nd arg is in bounds (legal index)") ^
+        jumpLe("L_VECTOR_SET_ILLEGAL_IDX", "illegal index") ^
+        Cmp(indd(fparg(3), 1), imm(0), "n should be non-negative") ^
+        jumpLt("L_VECTOR_SET_ILLEGAL_IDX", "negtive idx forbidden.") ^
+        rem("setting! vector element") ^
+        mov(R0, fparg(2), "R0 <- ptr to vector") ^
+        add(R0, imm(2), "go past type and length") ^
+        add(R0, indd(fparg(3), 1), "get desired index") ^
+        mov(ind(R0), fparg(4),
+            "set the nth element har to the value (ptr) given") ^
+        lookupConst(VOID, symMap) ^
+        jmp("L_VECTOR_SET_DONE", "") ^
+
+        label("L_VECTOR_SET_NOT_VECTOR", "", "") ^
+        prnStr("Exception in vector-set!: not a vector") ^
+        jmp(end_of_the_world, "halting") ^
+
+        
+        label("L_VECTOR_SET_NOT_INTEGER", "", "") ^
+        prnStr("Exception in vector-set!: not a valid index") ^
+        jmp(end_of_the_world, "halting") ^
+        
+        label("L_VECTOR_SET_ILLEGAL_IDX", "", "") ^
+        prnStr("Exception in vector-set!: not a valid index") ^
+        jmp(end_of_the_world, "halting") ^
+        
+        label("L_VECTOR_SET_DONE", "", "")
+
+    val makeVectorCode =
+        testArgNum(Const(Symbol("make-vector")), 2) ^
+        Cmp(ind(fparg(2)), T_INTEGER, "length of vec to create") ^
+        jumpNe("L_MAKE_VECTOR_NOT_INTEGER", "") ^
+        Cmp(indd(fparg(2), 1), imm(0), "must be non-negative") ^
+        jumpLt("L_MAKE_VECTOR_NOT_INTEGER", "") ^
+        push(R1, "i for loop") ^
+        mov(R1, indd(fparg(2), 1), "R1 <- n") ^
+        
+        label("L_MAKE_VECTOR_LOOP", "", "") ^
+        Cmp(R1, imm(0), "are we done?") ^
+        jumpEq("L_MAKE_VECTOR_PUSH_N", "") ^
+        push(fparg(3), "for vector creation") ^
+        dec(R1, "R1--") ^
+        jmp("L_MAKE_VECTOR_LOOP", "loop") ^
+
+        label("L_MAKE_VECTOR_PUSH_N", "", "") ^
+        push(indd(fparg(2), 1), "push n for vector creation") ^
+        call(make_sob_vector, "create vector") ^
+        mov(R1, indd(fparg(2), 1), "R1 <- n") ^
+        inc(R1, "we also pushed the number n") ^
+        drops(R1) ^
+        jmp("L_MAKE_VECTOR_DONE", "done") ^
+
+        label("L_MAKE_VECTOR_NOT_INTEGER", "", "") ^
+        prnStr("Exception in make-vector: not a nonnegative fixnum") ^
+        jmp(end_of_the_world, "halting") ^
+
+        label("L_MAKE_VECTOR_DONE", "", "done") ^
+        pop(R1, "")
+
+
+
+
+    val makeStringCode =
+        testArgNum(Const(Symbol("make-string")), 2) ^
+        Cmp(ind(fparg(2)), T_INTEGER, "length of vec to create") ^
+        jumpNe("L_MAKE_STRING_NOT_INTEGER", "") ^
+        Cmp(indd(fparg(2), 1), imm(0), "must be non-negative") ^
+        jumpLt("L_MAKE_STRING_NOT_INTEGER", "") ^
+        Cmp(ind(fparg(3)), T_CHAR, "strings are made (only) of chars") ^
+        jumpNe("L_MAKE_STRING_NOT_CHAR", "") ^
+        push(R1, "i for loop") ^
+        mov(R1, indd(fparg(2), 1), "R1 <- n") ^
+        
+        label("L_MAKE_STRING_LOOP", "", "") ^
+        Cmp(R1, imm(0), "are we done?") ^
+        jumpEq("L_MAKE_STRING_PUSH_N", "") ^
+        push(indd(fparg(3), 1), "for string creation") ^
+        dec(R1, "R1--") ^
+        jmp("L_MAKE_STRING_LOOP", "loop") ^
+
+        label("L_MAKE_STRING_PUSH_N", "", "") ^
+        push(indd(fparg(2), 1), "push n for string creation") ^
+        call(make_sob_string, "create string") ^
+        mov(R1, indd(fparg(2), 1), "R1 <- n") ^
+        inc(R1, "we also pushed the number n") ^
+        drops(R1) ^
+        jmp("L_MAKE_STRING_DONE", "done") ^
+
+        label("L_MAKE_STRING_NOT_INTEGER", "", "") ^
+        prnStr("Exception in make-string: not a nonnegative fixnum") ^
+        jmp(end_of_the_world, "halting") ^
+
+        label("L_MAKE_STRING_NOT_CHAR", "", "") ^
+        prnStr("Exception in make-string: not a character") ^
+        jmp(end_of_the_world, "halting") ^
+        
+        label("L_MAKE_STRING_DONE", "", "done") ^
+        pop(R1, "")
+
     fun eqCode(symMap) =
         label("L_START_EQP", "", "") ^
         testArgNum(Const(Symbol("eq?")), 2) ^
@@ -2653,14 +2915,19 @@ local
         
         Cmp(ind(fparg(2)), T_PAIR, "compare addresses failed") ^
         jumpNe("L_EQP_RETURN_FALSE", "") ^
+
         Cmp(ind(fparg(2)), T_STRING, "compare addresses failed") ^
         jumpNe("L_EQP_RETURN_FALSE", "") ^
+
         Cmp(ind(fparg(2)), T_VECTOR, "compare addresses failed") ^
         jumpNe("L_EQP_RETURN_FALSE", "") ^
+
         Cmp(ind(fparg(2)), T_VOID, "compare addresses failed") ^
         jumpNe("L_EQP_RETURN_FALSE", "") ^
+
         Cmp(ind(fparg(2)), T_NIL, "compare addresses failed") ^
         jumpNe("L_EQP_RETURN_FALSE", "") ^
+
         Cmp(ind(fparg(2)), T_CLOSURE, "compare addresses failed") ^
         jumpNe("L_EQP_RETURN_FALSE", "") ^
 
@@ -2699,6 +2966,7 @@ local
         mov(R6, imm(0), "counter of elements in the list") ^
         mov(R7, fparg(2), "R7 <- ptr to f") ^
         mov(R8, stack(FP ^ " - 2"), "R8 <- retrun address") ^
+        mov(R9, stack(FP ^ " - 1"), "R9 <- oldFP") ^
         testArgNum(Const(Symbol("apply")), 2) ^
         Cmp(ind(fparg(2)), T_CLOSURE, "1st arg should be closure") ^
         jumpNe("L_APPLY_NOT_CLOS", "") ^
@@ -2744,15 +3012,21 @@ local
             "push f's env (from R7) onto stack") ^
         inc(R13, "") ^
         mov(stack(R13), R8, "ret address (from R8) pushed") ^
+        mov(FP, R9, "old FP (from R9) pushed") ^
         inc(R13, "one more, for SP") ^
         mov(SP, R13, "re-adjust SP") ^
-        mov(FP, SP, "re-adjust FP") ^
         jmpa(indd(R7, 2), "jump to f's code section") ^
+        (if debug
+         then
+             prnStr("WE SHOULD NOT BE HERE - APPLY") ^
+             jmp("END_OF_THE_WORLD", "sorry.") 
+         else "") ^
         
         label("L_APPLY_NOT_CLOS", "", "") ^
         prnStr("Exception: attempt to apply non-procedure") ^
-        jmp("END_OF_THE_WORLD", "sorry.") 
-        
+        jmp("END_OF_THE_WORLD", "sorry.") ^
+
+        label("L_APPLY_DONE", "done", "")
     fun createBuiltins(symMap) =
         createBinP(symMap) ^ createBinM(symMap) ^
         createBinMul(symMap) ^ createBinDiv(symMap) ^
@@ -2779,6 +3053,8 @@ local
                     typeP(T_STRING, "string?", symMap, T_STRING)) ^
         createUnaFn(symMap, "SYMBOLP", "symbol?",
                     typeP(T_SYMBOL, "string?", symMap, T_GENSYM)) ^
+        createUnaFn(symMap, "VECTORP", "vector?",
+                    typeP(T_VECTOR, "vector?", symMap, T_VECTOR)) ^
         createUnaFn(symMap, "CHAR_TO_INTEGER", "char->integer",
                     changeCastCode(T_CHAR, T_INTEGER, "char->integer",
                                    "CHAR_TO_INTEGER",
@@ -2792,10 +3068,16 @@ local
                     symbol_to_string_code) ^
         createUnaFn(symMap, "STRING_LENGTH", "string-length",
                     string_len_code) ^
+        createUnaFn(symMap, "VECTOR_LENGTH", "vector-length",
+                    vector_len_code) ^
         createNaryFn(symMap, "STRING_REF", "string-ref",
-                   string_ref_code) ^
+                     string_ref_code) ^
+        createNaryFn(symMap, "VECTOR_REF", "vector-ref",
+                     vector_ref_code) ^
         createNaryFn(symMap, "STRING_SET", "string-set!",
                      string_set_code symMap) ^
+        createNaryFn(symMap, "VECTOR_SET", "vector-set!",
+                     vector_set_code symMap) ^
         createNaryFn(symMap, "REMAINDER", "remainder",
                      remainderCode) ^
         createNaryFn(symMap, "__EQP__", "eq?",
@@ -2803,16 +3085,30 @@ local
         createNaryFn(symMap, "GEN_SYM", "gensym",
                      gensymCode) ^
         createNaryFn(symMap, "APPLY", "apply",
-                    applyCode(symMap)) ^
+                     applyCode(symMap)) ^
+        createNaryFn(symMap, "ASM_MAKE_VECTOR", "asm-make-vector",
+                     makeVectorCode) ^
+        createNaryFn(symMap, "ASM_MAKE_STRING", "asm-make-string",
+                     makeStringCode) ^
         rem("End of Constants' code.")
 
     val GE = ref ExprMap.empty;;
     val prolog =
-        "\"starting to run\"" ^ nl ^
+        (if debug then "\"starting to run\"" ^ nl else "") ^
         "(define list (lambda args args))" ^ nl ^
-        "(define zero? (lambda (n) (and (integer? n) (bin=? n 0))))" ^
-        (* fileToString("support-code.scm") ^ nl ^ *)
-        "\"big support-code.scm done\""
+        "(define zero? (lambda (n) (and (integer? n) (bin=? n 0))))" ^ nl ^
+
+        "(define (make-vector n . el) " ^
+        "(cond ((null? el) (asm-make-vector n 0)) " ^
+        "((null? (cdr el)) (asm-make-vector n (car el))) " ^
+        "(else (asm-make-vector n 1 2))))" ^ nl ^
+        
+        "(define (make-string n . chr) " ^
+        "(cond ((null? chr) (asm-make-string n #\\space)) " ^
+        "((null? (cdr chr)) (asm-make-string n (car chr))) " ^
+        "(else (asm-make-string n 1 2))))" ^ nl ^
+        fileToString("support-code.scm") ^ nl ^
+        (if debug then "\"big support-code.scm done\"" else "")
     val initStack =
         rem("initializing the stack, pushing fake fp, " ^ docNl ^
             "ret-address, empty env and 0 (arg number)") ^
@@ -2830,7 +3126,9 @@ fun cg e =
         run (e, [], [], symMap)
     end
 fun compileSchemeFile (sourceFile, targetFile) =
-    (print "TODO: IMPORTANT: RETURN RAM_SIZE AND STACK_SIZE TO 1 MEGA\n";
+    (print (if debug
+            then "TODO: IMPORTANT: RETURN RAM_SIZE AND STACK_SIZE TO 1 MEGA\n"
+            else "");
      let val input = prolog ^ fileToString(sourceFile)
          (* val DEBUG = print("Compiling:" ^ nl ^ input ^ nl) *)
          (* val PEs = TagParser.stringToPEs(input) *)
@@ -2844,12 +3142,12 @@ fun compileSchemeFile (sourceFile, targetFile) =
                              createBuiltins(symMap) ^
                              initStack
          val program =
-             concat(map (fn exp => (cg [exp]) ^ prnR0()) exprs)
+             concat(map (fn exp => (cg [exp]) ^ prnR0(symMap)) exprs)
      in
          stringToFile(fileToString("Intro.c") ^
                       constantsCode ^
                       program ^
-                      CONCLUSION,
+                      CONCLUSION(symMap),
                       targetFile)
      end
     )
@@ -2858,7 +3156,7 @@ end; (* of structure Code_gen *)
 
           if debug
           then
-              print "CodeGen.compileSchemeFile(\"inFile.scm\", \"genCode.c\")\n"
+              print "CodeGen.compileSchemeFile(\"inFile.scm\", \"genCode.c\");\n"
           else
               print ""
               

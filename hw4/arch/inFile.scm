@@ -14,11 +14,32 @@
 ;;    x)) ;; -> #f
 
 ;; ((lambda (p1 p2) p1) ((lambda () #t) '()) #f) ;; -> Error wrong argnum
+((lambda (p1) p1) #t)
+((lambda (p1) p1) #t)
 
-;; ((lambda (p1 p2) p1) ((lambda () #t)) #f) ;; -> #t
+87591919
+;; (bin+ 1 2)
+(define +
+  (letrec ((loop
+            (lambda (s)
+              (if (null? s)
+                  0
+                  (bin+ (car s)
+                        (loop (cdr s)))))))
+    (lambda s (loop s))))
 
-;; ((lambda (p1) p1) #t)
+#\G
+#\g
+#t
+(lambda (a) a)
 
+((lambda (p1 p2) p1) ((lambda () #t)) #f) ;; -> #t
+
+(define a '(990))
+(define b a)
+(define c (list (bin+ 0 990)))
+(eq? a b)
+(eq? a c)
 ;; (((lambda (x1 x2)
 ;;      (lambda (x3) x1))
 ;;     #f #t)
@@ -356,14 +377,14 @@
 ;;   (eq? (f 0) (f 0))) ;; -> #f
 
 
-(define +
-  (letrec ((loop
-            (lambda (s)
-              (if (null? s)
-                  0
-                  (bin+ (car s)
-                        (loop (cdr s)))))))
-    (lambda s (loop s))))
+;; (define +
+;;   (letrec ((loop
+;;              (lambda (s)
+;;               (if (null? s)
+;;                   0
+;;                   (bin+ (car s)
+;;                         (loop (cdr s)))))))
+;;       (lambda s (loop s))))
 
 ;; (+)
 ;; (+ 1 2 3)
@@ -411,19 +432,27 @@
 ;; (symbol->string (gensym))
 ;; (symbol->string (gensym))
 
-(define -
-  (lambda (a . s)
-    (if (null? s)
-        (bin- 0 a)
-        (bin- a (apply + s)))))
+;; (define -
+;;   (lambda (a . s)
+;;     (if (null? s)
+;;         (bin- 0 a)
+;;         (bin- a (apply + s)))))
+
+;; (*)
+;; (* 1 2 3 4)
+;; (* (/ 40 8) 7)
 
 
-
-(- 1 2 3)
-
+;; (- 1 2 3) ;; -> -4
+;; (- 1 2) ;; -> -1
+;; (- 8) ;; -> -8
+;; (apply - '(7)) ;; -> -7
+;; ;; (apply - '()) ;; -> Exception
+;; (apply - '(1 2)) ;; -> -1
+;; (apply - '(1 2 10 100)) ;; -> -111
 
 ;; ((lambda (a . s) s) 1 2 3)
-;; ((lambda (a . s) (apply + s)) 1 2 3)
+;; ;; ((lambda (a . s) (apply + s)) 1 2 3)
 ;; (+ 1 2 3 4 5)
 ;; (apply + '(1 2 3))
 ;; (apply + '(2))
@@ -432,4 +461,37 @@
 ;; (apply bin- '(1 2)) ;; -> -1
 ;; (apply bin- '(2 90)) ;; -> -88
 ;; (apply bin- '(1000 3)) ;; -> 997
-;; (apply + (list (apply + '(4 5 6 7 100)))) ;; -> 122
+;; (apply + (cons 6 (list (apply + '(4 5 6 7 100))))) ;; -> 128
+
+;; (define v #(1 2 3))
+
+;; (define v2 (make-vector 3 808))
+;; (vector? v) ;; -> #t
+;; (vector? #f) ;; -> #f
+;; (vector-ref v 0) ;; -> 1
+;; ;; (vector-ref v 3) ;; -> Exception
+;; (vector-set! v 0 'abbbbcdef)
+
+;; (vector-ref v 0) ;; -> 'a
+
+;; v
+
+;; #()
+
+;; (define a_ 8)
+;; a_
+;; (vector-length v) ;; -> 3
+
+;; (make-vector 5 0)
+
+;; (make-vector 5)
+;; (make-vector 0)
+;; (make-vector 0 1010102)
+
+;; (make-vector 5 'tty)
+
+;; (make-string 5 #\a)
+;; (make-string 5)
+;; (make-string 0)
+;; (make-string 0 #\T)
+;; (make-string 0 't)
